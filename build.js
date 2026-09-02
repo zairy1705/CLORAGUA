@@ -6,9 +6,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const distDir = path.join(__dirname, 'dist');
-if (!fs.existsSync(distDir)) {
-  fs.mkdirSync(distDir, { recursive: true });
-}
+const publicDir = path.join(__dirname, 'public');
+
+[distDir, publicDir].forEach(dir => {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+});
 
 const filesToCopy = [
   'index.html',
@@ -21,10 +25,10 @@ const filesToCopy = [
 
 for (const item of filesToCopy) {
   const src = path.join(__dirname, item);
-  const dest = path.join(distDir, item);
   if (fs.existsSync(src)) {
-    fs.cpSync(src, dest, { recursive: true, force: true });
-    console.log(`✓ Copied ${item} to dist/`);
+    fs.cpSync(src, path.join(distDir, item), { recursive: true, force: true });
+    fs.cpSync(src, path.join(publicDir, item), { recursive: true, force: true });
+    console.log(`✓ Copied ${item} to dist/ and public/`);
   }
 }
 
