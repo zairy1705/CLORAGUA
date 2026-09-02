@@ -1510,9 +1510,70 @@ textarea { height: 75px; resize: vertical; }
   color: #ffffff;
 }
 
+/* Range Presets for Verification & Options Selection */
+.range-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 14px;
+}
+.range-preset-pill {
+  background: var(--surface-container-low);
+  border: 1px solid var(--outline-variant);
+  color: var(--on-surface);
+  padding: 6px 12px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+.range-preset-pill:hover {
+  border-color: var(--primary);
+  background: var(--surface-container-high);
+}
+.range-preset-pill.active {
+  background: var(--primary-fixed);
+  border-color: var(--primary);
+  color: var(--on-primary-fixed);
+  font-weight: 700;
+}
+
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 28, 58, 0.45);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 99;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+.sidebar-backdrop.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.sidebar-close-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  background: transparent;
+  border: 0;
+  color: var(--on-surface-variant);
+  font-size: 22px;
+  padding: 6px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+/* Responsive queries */
 @media (max-width: 990px) {
-  .sidebar { width: 220px; }
-  main { margin-left: 220px; }
+  .sidebar { width: 240px; }
+  main { margin-left: 240px; }
   .view { padding: 26px 24px; }
   .welcome { grid-template-columns: 1fr; padding: 32px 28px; text-align: center; }
   .welcome-heading { margin: 0 auto; font-size: 32px; }
@@ -1528,11 +1589,32 @@ textarea { height: 75px; resize: vertical; }
   .dashboard { grid-template-columns: 1fr; }
 }
 
-@media (max-width: 670px) {
-  .sidebar { display: none; }
-  main { margin: 0; }
-  header { height: 64px; padding: 0 18px; }
-  .menu { display: inline-grid; margin: 0 8px 0 0; }
+@media (max-width: 768px) {
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 280px;
+    height: 100vh;
+    z-index: 100;
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 4px 0 25px rgba(0, 28, 58, 0.25);
+    background: var(--surface-container-lowest);
+    overflow-y: auto;
+  }
+  .sidebar.open {
+    transform: translateX(0);
+  }
+  .sidebar-close-btn {
+    display: flex;
+  }
+  main { margin-left: 0; }
+  header { height: 64px; padding: 0 16px; }
+  .menu { display: inline-grid; margin: 0 12px 0 0; }
   .header-status { font-size: 0; }
   .header-status .help { font-size: 12px; }
   .view { padding: 20px 18px 40px; }
@@ -1671,8 +1753,12 @@ void main() {
 </script>
 </div>
 <!-- STITCH_SHADER_END:ANIMATION_7 -->
-<aside class="sidebar">
-  <a class="brand" href="#inicio"><span class="brand-mark"><span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1; font-size: 20px;">water_drop</span></span><span>CLOR<span>AGUA</span><small>GESTIÓN DEL AGUA SEGURA</small></span></a>
+<div id="sidebar-backdrop" class="sidebar-backdrop"></div>
+<aside class="sidebar" id="app-sidebar">
+  <div style="display:flex; align-items:center; justify-content:space-between; width:100%;">
+    <a class="brand" href="#inicio"><span class="brand-mark"><span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1; font-size: 20px;">water_drop</span></span><span>CLOR<span>AGUA</span><small>GESTIÓN DEL AGUA SEGURA</small></span></a>
+    <button id="sidebar-close-btn" class="sidebar-close-btn" aria-label="Cerrar menú"><span class="material-symbols-outlined">close</span></button>
+  </div>
   <nav>
     <button class="nav active" data-view="inicio"><span class="material-symbols-outlined nav-icon">home</span> Inicio</button>
     <button class="nav" data-view="dosis"><span class="material-symbols-outlined nav-icon">calculate</span> Calcular dosis</button>
@@ -1846,8 +1932,14 @@ void main() {
         <div class="step-pane" data-step="2">
           <h3>Producto de cloro</h3>
           <div class="choice-row">
-            <button class="choice selected" data-product="liquido">💧 Hipoclorito de sodio<br><small>Producto líquido</small></button>
-            <button class="choice" data-product="calcio">◈ Hipoclorito de calcio<br><small>Producto sólido</small></button>
+            <button type="button" class="choice selected" data-product="liquido" aria-pressed="true">
+              <strong>💧 Hipoclorito de sodio</strong>
+              <small>Producto líquido (solución concentrada)</small>
+            </button>
+            <button type="button" class="choice" data-product="calcio" aria-pressed="false">
+              <strong>◈ Hipoclorito de calcio</strong>
+              <small>Producto sólido (polvo / granulado / tabletas)</small>
+            </button>
           </div>
           <div class="input-row">
             <label>Concentración de cloro activo<input id="concentration" type="number" min="0.01" max="100" step="any" value="7.5"><small>% según etiqueta o ficha técnica</small></label>
@@ -1931,7 +2023,12 @@ void main() {
         <h3>🔬 Medición de cloro residual</h3>
         <label>Cloro residual libre obtenido<input id="verified-residual" type="number" min="0" step="0.01" placeholder="mg/L"></label>
         <label>Rango de referencia operativo
-          <div class="input-row"><input id="range-min" type="number" value="0.5" step="0.01"><input id="range-max" type="number" value="1" step="0.01"></div>
+          <div class="range-presets">
+            <button type="button" class="range-preset-pill active" data-min="0.5" data-max="1.0">Red domiciliaria (0.5 – 1.0 mg/L)</button>
+            <button type="button" class="range-preset-pill" data-min="0.8" data-max="1.2">Salida reservorio (0.8 – 1.2 mg/L)</button>
+            <button type="button" class="range-preset-pill" data-min="0.3" data-max="0.8">Extremo de red (0.3 – 0.8 mg/L)</button>
+          </div>
+          <div class="input-row"><input id="range-min" type="number" value="0.5" step="0.01"><input id="range-max" type="number" value="1.0" step="0.01"></div>
           <small>mg/L · Ajustable según norma, punto y protocolo vigente.</small>
         </label>
         <label>Punto de medición<input id="measurement-point" placeholder="Ej. salida del reservorio"></label>

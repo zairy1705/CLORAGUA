@@ -1,158 +1,639 @@
-const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);const state={volume:0,capacity:0,product:'liquido',tank:'vertical'};
-$('#volumen .page-head').insertAdjacentHTML('afterend','<figure class="tank-gallery"><img src="assets/tipos-tanque-3d.png" alt="Ilustración 3D de tipos de reservorio de agua"><figcaption>Identifique visualmente el tipo de reservorio antes de ingresar sus dimensiones.</figcaption></figure>');
-const toast=m=>{const t=$('#toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2800)};
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+const state = { volume: 0, capacity: 0, product: 'liquido', tank: 'vertical' };
 
-function go(id){
-  $$('.view').forEach(v=>v.classList.toggle('active',v.id===id));
-  $$('.nav').forEach(n=>n.classList.toggle('active',n.dataset.view===id));
-  const labels={
-    inicio:['PANEL PRINCIPAL','Buen día, operador'],
-    dosis:['ASISTENTE DE DOSIFICACIÓN','Nueva dosificación'],
-    volumen:['CÁLCULO DE VOLUMEN','Volumen del tanque'],
-    verificar:['VERIFICACIÓN POSTERIOR','Verificar residual'],
-    calibrar:['CONTROL DE EQUIPOS','Calibrar dosificador'],
-    solucion:['PREPARACIÓN','Preparar solución'],
-    sistemas:['REGISTRO','Sistemas de agua'],
-    historial:['VIGILANCIA','Historial de mediciones'],
-    normativa:['REFERENCIAS TÉCNICAS','Normativa y guías']
-  };
-  $('#view-label').textContent=labels[id][0];
-  $('#view-title').textContent=labels[id][1];
-  window.scrollTo({top:0,behavior:'smooth'});
-  if(id==='historial')renderHistory();
-  if(id==='sistemas')renderSystems();
-  if(window.gotitaSetPage) window.gotitaSetPage(id);
-}
-$$('[data-go]').forEach(b=>b.onclick=()=>go(b.dataset.go));$$('.nav').forEach(b=>b.onclick=()=>go(b.dataset.view));
-let step=1;function setStep(n){step=n;$$('.step-pane').forEach(p=>p.classList.toggle('active',+p.dataset.step===n));$$('.steps span').forEach((s,i)=>s.classList.toggle('on',i<n));}$$('.next').forEach(b=>b.onclick=()=>{if(step===1&&!+$('#dose-volume').value)return toast('Ingrese el volumen de agua antes de continuar.');setStep(step+1)});$$('.back').forEach(b=>b.onclick=()=>setStep(step-1));
-$$('.choice').forEach(b=>b.onclick=()=>{$$('.choice').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');state.product=b.dataset.product;$('#presentation').value=state.product==='calcio'?'solid':'liquid'});
-
-$('#calculate-dose').onclick=()=>{
-  let vol=+$('#dose-volume').value*( $('#dose-unit').value==='m3'?1000:1), c=+$('#concentration').value,now=+$('#residual-now').value,target=+$('#residual-target').value,demand=+$('#demand').value;
-  if(!vol||!c||isNaN(now)||!target)return toast('Complete el volumen, la concentración y los residuales.');
-  let active=Math.max(0,target-now+demand), grams=active*vol/1000, product=grams/(c/100), unit=state.product==='calcio'?'g':'mL',productText=product<1000?`${product.toLocaleString('es-PE',{maximumFractionDigits:2})} ${unit}`:`${(product/1000).toLocaleString('es-PE',{maximumFractionDigits:3})} ${state.product==='calcio'?'kg':'L'}`;
-  $('#dose-result').innerHTML=`<div class="dose-amount"><small>DOSIS DE CLORO ACTIVO</small><strong>${active.toFixed(2)} mg/L</strong><small>Incremento requerido: objetivo − actual + demanda</small></div><div class="dose-amount"><small>CANTIDAD TEÓRICA DE PRODUCTO</small><strong>${productText}</strong><small>Para ${vol.toLocaleString('es-PE')} L de agua · Producto al ${c}%</small></div>`;
-  setStep(4);
-  if(window.gotitaReact) window.gotitaReact(`¡Dosis calculada (${active.toFixed(2)} mg/L)! Recuerda esperar 30 min de tiempo de contacto 💧⏱️`);
-};
-
-const fields={vertical:`<div class="input-row"><label>Diámetro (m)<input id="diameter" type="number" min="0" step="any" placeholder="Opcional si ingresa radio"></label><label>Radio (m)<input id="radius" type="number" min="0" step="any" placeholder="Opcional si ingresa diámetro"></label></div><div class="input-row"><label>Altura total (m)<input id="total-height" type="number" min="0" step="any"></label><label>Altura actual del agua (m)<input id="water-height" type="number" min="0" step="any"></label></div>`,rectangular:`<div class="input-row"><label>Largo (m)<input id="length" type="number" min="0" step="any"></label><label>Ancho (m)<input id="width" type="number" min="0" step="any"></label></div><div class="input-row"><label>Altura total (m)<input id="total-height" type="number" min="0" step="any"></label><label>Altura actual del agua (m)<input id="water-height" type="number" min="0" step="any"></label></div>`,cubic:`<div class="input-row"><label>Lado (m)<input id="side" type="number" min="0" step="any"></label><label>Altura actual del agua (m)<input id="water-height" type="number" min="0" step="any"><small>Si está lleno, ingrese el lado.</small></label></div>`,horizontal:`<div class="input-row"><label>Diámetro (m)<input id="diameter" type="number" min="0" step="any"></label><label>Longitud (m)<input id="length" type="number" min="0" step="any"></label></div><label>Nivel actual del agua (m)<input id="water-height" type="number" min="0" step="any"></label>`,direct:`<div class="input-row"><label>Volumen<input id="direct-volume" type="number" min="0" step="any"></label><label>Unidad<select id="direct-unit"><option value="l">Litros (L)</option><option value="m3">Metros cúbicos (m³)</option></select></label></div>`};
-function tankFields(){state.tank=$('#tank-type').value;$('#tank-fields').innerHTML=fields[state.tank];$('#tank-visual').className=`tank-visual ${state.tank}`}$('#tank-type').onchange=tankFields;tankFields();
-
-$('#calculate-volume').onclick=()=>{
-  const v=id=>+$('#'+id)?.value||0;let vol=0,cap=0,h=0,th=0;
-  try{
-    if(state.tank==='vertical'){let r=v('radius')||v('diameter')/2;th=v('total-height');h=v('water-height');cap=Math.PI*r*r*th;vol=Math.PI*r*r*h}
-    else if(state.tank==='rectangular'){th=v('total-height');h=v('water-height');cap=v('length')*v('width')*th;vol=v('length')*v('width')*h}
-    else if(state.tank==='cubic'){let side=v('side');h=v('water-height')||side;th=side;cap=side**3;vol=side*side*h}
-    else if(state.tank==='horizontal'){let r=v('diameter')/2,L=v('length');h=v('water-height');th=2*r;cap=Math.PI*r*r*L;if(h>0&&h<=2*r){let a=r*r*Math.acos((r-h)/r)-(r-h)*Math.sqrt(2*r*h-h*h);vol=a*L}}
-    else{vol=v('direct-volume')*($('#direct-unit').value==='m3'?1000:1);cap=vol;h=th=1}
-    if(!vol||h>th)throw Error();
-  }catch(e){return toast('Revise las dimensiones: deben ser mayores que cero y físicamente posibles.')}
-  state.volume=vol*1000;state.capacity=cap*1000;let pct=Math.min(100,(vol/cap)*100);
-  $('.water').style.height=pct+'%';
-  $('#volume-main').innerHTML=`${state.volume.toLocaleString('es-PE',{maximumFractionDigits:1})} <small>L</small>`;
-  $('#volume-m3').textContent=(state.volume/1000).toLocaleString('es-PE',{maximumFractionDigits:3});
-  $('#volume-capacity').textContent=state.capacity.toLocaleString('es-PE',{maximumFractionDigits:1});
-  $('#volume-message').textContent=`Nivel de agua: ${pct.toFixed(0)}% de la capacidad total.`;
-  $('#use-volume').disabled=false;
-  if(window.gotitaReact) window.gotitaReact(`¡Volumen calculado: ${state.volume.toLocaleString('es-PE')} L! Puedes usarlo para dosificar 📏💧`);
-};
-
-$('#use-volume').onclick=()=>{
-  $('#dose-volume').value=state.volume.toFixed(1);
-  $('#dose-unit').value='l';
-  go('dosis');
-  toast('Volumen aplicado a la dosificación.');
-  if(window.gotitaReact) window.gotitaReact(`¡Volumen de ${state.volume.toLocaleString('es-PE')} L aplicado al cálculo de dosis! 🎯💧`);
-};
-
-function statusFor(x,min,max){return x>=min&&x<=max?['good','●','Dentro del rango','Adecuado según el rango de referencia ingresado.']:x<min?['warn','!','Requiere verificación','El residual está por debajo del rango de referencia.']:['bad','!','Fuera del rango','El residual está por encima del rango de referencia.']}
-
-$('#verify-btn').onclick=()=>{
-  let x=+$('#verified-residual').value,min=+$('#range-min').value,max=+$('#range-max').value;
-  if(isNaN(x)||min>max)return toast('Ingrese una medición y un rango válido.');
-  let [c,i,t,p]=statusFor(x,min,max),box=$('#verification-result');
-  box.className='verification-card '+c;
-  box.innerHTML=`<span>${i}</span><h3>${t}</h3><p><b>${x.toFixed(2)} mg/L</b> · Rango configurado: ${min}–${max} mg/L</p><p>${p}</p>`;
-  saveMeasurement({value:x,min,max,status:t,point:$('#measurement-point').value||'Sin especificar',date:new Date().toLocaleString('es-PE')});
-  renderLast();
-  toast('Verificación registrada en el historial.');
-  if(window.gotitaReact){
-    if(c==='good') window.gotitaReact(`¡Excelente! Residual de ${x.toFixed(2)} mg/L dentro del rango. Agua segura 🌟💧`);
-    else if(c==='warn') window.gotitaReact(`⚠️ Residual bajo (${x.toFixed(2)} mg/L). Se recomienda revisar dosificador o dosis.`);
-    else window.gotitaReact(`🚫 Residual alto (${x.toFixed(2)} mg/L). Ajusta la dosis para evitar sabor/olor a cloro.`);
+// Safely inject tank illustration if container exists
+try {
+  const volHead = $('#volumen .page-head');
+  if (volHead && !$('#volumen .tank-gallery')) {
+    volHead.insertAdjacentHTML('afterend', '<figure class="tank-gallery"><img src="assets/tipos-tanque-3d.png" alt="Ilustración 3D de tipos de reservorio de agua"><figcaption>Identifique visualmente el tipo de reservorio antes de ingresar sus dimensiones.</figcaption></figure>');
   }
-};
-
-$('#flow-calc').onclick=()=>{
-  let q=+$('#flow-water').value,d=+$('#flow-dose').value,c=+$('#flow-conc').value;
-  if(!q||!d||!c)return toast('Complete los datos de caudal.');
-  let mlh=q*d/(c*10);
-  $('#flow-result').innerHTML=`<b>Caudal requerido:</b><br>${(mlh/60).toFixed(2)} mL/min · ${mlh.toFixed(2)} mL/h · ${(mlh/1000).toFixed(3)} L/h`;
-  if(window.gotitaReact) window.gotitaReact(`¡Caudal requerido: ${(mlh/60).toFixed(2)} mL/min! Comprueba con probeta graduada 🧪`);
-};
-
-$('#test-calc').onclick=()=>{
-  let v=+$('#observed-volume').value,t=+$('#observed-time').value;
-  if(!v||!t)return toast('Ingrese volumen y tiempo de prueba.');
-  let realFlow = v/t;
-  $('#test-result').innerHTML=`<b>Caudal real observado:</b><br>${realFlow.toFixed(2)} mL/min · ${(realFlow*60).toFixed(2)} mL/h`;
-  if(window.gotitaReact) window.gotitaReact(`¡Prueba completada: ${realFlow.toFixed(2)} mL/min! Compara con el caudal requerido ⏱️💧`);
-};
-
-$('#dilution-calc').onclick=()=>{
-  let ci=+$('#dilution-initial').value,ct=+$('#dilution-target').value,v=+$('#dilution-volume').value;
-  if(!ci||!ct||!v||ct>ci)return toast('La concentración deseada debe ser menor que la inicial.');
-  let prod=v*ct/ci,water=v-prod;
-  $('#dilution-result').innerHTML=`<span>⊕</span><h3>Solución final: ${v.toFixed(2)} L</h3><p>Mezcle <b>${prod.toFixed(3)} L (${(prod*1000).toFixed(0)} mL)</b> de producto comercial con <b>${water.toFixed(3)} L</b> de agua para obtener una solución al ${ct}%.</p>`;
-  if(window.gotitaReact) window.gotitaReact(`¡Solución lista! Recuerda: vierte siempre el cloro sobre el agua usando tu EPP 🦺⚠️`);
-};
-
-const get=k=>JSON.parse(localStorage.getItem(k)||'[]'),put=(k,x)=>localStorage.setItem(k,JSON.stringify(x));
-function saveMeasurement(x){let a=get('cloragua-measurements');a.unshift(x);put('cloragua-measurements',a)}
-function renderHistory(){
-  let q=$('#history-search').value.toLowerCase(),f=$('#history-state').value,a=get('cloragua-measurements').filter(x=>(!f||x.status===f)&&(`${x.point} ${x.status}`).toLowerCase().includes(q));
-  $('#history-list').innerHTML=a.length?a.map((x,i)=>`<article class="history-item"><div><h3>${x.value.toFixed(2)} mg/L · ${x.point}</h3><p>${x.date} · Rango: ${x.min}–${x.max} mg/L</p></div><span class="pill ${x.status==='Dentro del rango'?'good':x.status==='Fuera del rango'?'bad':'warn'}">${x.status}</span></article>`).join(''):`<div class="empty-state">No hay mediciones que coincidan con el filtro.</div>`;
+} catch (e) {
+  console.warn('Tank gallery banner warning:', e);
 }
-$('#history-search').oninput=renderHistory;$('#history-state').onchange=renderHistory;
-function renderLast(){let x=get('cloragua-measurements')[0];if(x)$('#last-measurement').innerHTML=`<b>${x.value.toFixed(2)} mg/L</b> · ${x.point}<br><small>${x.date} · ${x.status}</small>`}renderLast();
 
-$('#save-system').onclick=()=>{
-  let name=$('#sys-name').value.trim();
-  if(!name)return toast('Ingrese el nombre del sistema.');
-  let a=get('cloragua-systems');
-  a.unshift({name,town:$('#sys-town').value,district:$('#sys-district').value,tank:$('#sys-tank').value,volume:$('#sys-volume').value,person:$('#sys-person').value});
-  put('cloragua-systems',a);
-  toast('Sistema guardado correctamente.');
-  renderSystems();
-  if(window.gotitaReact) window.gotitaReact(`¡Sistema "${name}" registrado con éxito en tu inventario! 📋🌟`);
+const toast = m => {
+  const t = $('#toast');
+  if (!t) return;
+  t.textContent = m;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2800);
 };
 
-function renderSystems(){
-  let a=get('cloragua-systems');
-  $('#systems-list').innerHTML=a.map((x,i)=>`<article class="record"><div><h3>${x.name}</h3><p>${x.town||'Sin centro poblado'} · ${x.district||'Sin distrito'} · ${x.tank||'Tanque no especificado'} · ${x.volume||'—'} L</p></div><button class="delete" data-i="${i}">Eliminar</button></article>`).join('')||'<div class="empty-state">Aún no hay sistemas registrados.</div>';
-  $$('.delete').forEach(b=>b.onclick=()=>{let a=get('cloragua-systems');a.splice(+b.dataset.i,1);put('cloragua-systems',a);renderSystems()});
+// Mobile Sidebar Drawer Toggle & Backdrop
+function toggleSidebar(forceState) {
+  const sidebar = document.querySelector('.sidebar');
+  const backdrop = document.getElementById('sidebar-backdrop');
+  if (!sidebar) return;
+  const shouldOpen = forceState !== undefined ? forceState : !sidebar.classList.contains('open');
+  sidebar.classList.toggle('open', shouldOpen);
+  if (backdrop) backdrop.classList.toggle('open', shouldOpen);
+}
+
+function closeSidebar() {
+  toggleSidebar(false);
+}
+
+// Navigation Engine
+function go(id) {
+  if (!id) return;
+  $$('.view').forEach(v => v.classList.toggle('active', v.id === id));
+  $$('.nav').forEach(n => n.classList.toggle('active', n.dataset.view === id));
+  
+  const labels = {
+    inicio: ['PANEL PRINCIPAL', 'Buen día, operador'],
+    dosis: ['ASISTENTE DE DOSIFICACIÓN', 'Nueva dosificación'],
+    volumen: ['CÁLCULO DE VOLUMEN', 'Volumen del tanque'],
+    verificar: ['VERIFICACIÓN POSTERIOR', 'Verificar residual'],
+    calibrar: ['CONTROL DE EQUIPOS', 'Calibrar dosificador'],
+    solucion: ['PREPARACIÓN', 'Preparar solución'],
+    sistemas: ['REGISTRO', 'Sistemas de agua'],
+    historial: ['VIGILANCIA', 'Historial de mediciones'],
+    normativa: ['REFERENCIAS TÉCNICAS', 'Normativa y guías']
+  };
+
+  if (labels[id]) {
+    const lbl = $('#view-label');
+    const title = $('#view-title');
+    if (lbl) lbl.textContent = labels[id][0];
+    if (title) title.textContent = labels[id][1];
+  }
+
+  // Close mobile drawer on selection
+  closeSidebar();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+
+  if (id === 'historial') renderHistory();
+  if (id === 'sistemas') renderSystems();
+  if (window.gotitaSetPage) window.gotitaSetPage(id);
+}
+
+// Global Delegated Event Listener for Navigation, Choices, and Actions
+document.addEventListener('click', (e) => {
+  // 1. Navigation with data-go
+  const goBtn = e.target.closest('[data-go]');
+  if (goBtn) {
+    e.preventDefault();
+    go(goBtn.dataset.go);
+    return;
+  }
+
+  // 2. Navigation with .nav / data-view
+  const navBtn = e.target.closest('.nav');
+  if (navBtn && navBtn.dataset.view) {
+    e.preventDefault();
+    go(navBtn.dataset.view);
+    return;
+  }
+
+  // 3. Mobile Hamburger Menu Toggle
+  const menuBtn = e.target.closest('.menu');
+  if (menuBtn) {
+    e.preventDefault();
+    toggleSidebar();
+    return;
+  }
+
+  // 4. Mobile Sidebar Close Button or Backdrop Click
+  const closeBtn = e.target.closest('#sidebar-close-btn') || e.target.closest('.sidebar-close-btn');
+  const backdrop = e.target.closest('#sidebar-backdrop');
+  if (closeBtn || backdrop) {
+    e.preventDefault();
+    closeSidebar();
+    return;
+  }
+
+  // 5. Product Choice Selection (Hipoclorito de sodio vs calcio)
+  const choiceBtn = e.target.closest('.choice');
+  if (choiceBtn && choiceBtn.dataset.product) {
+    e.preventDefault();
+    selectProduct(choiceBtn.dataset.product);
+    return;
+  }
+
+  // 6. Range preset pills in verification view
+  const rangePill = e.target.closest('.range-preset-pill');
+  if (rangePill) {
+    e.preventDefault();
+    const min = rangePill.dataset.min;
+    const max = rangePill.dataset.max;
+    if (min && max) {
+      if ($('#range-min')) $('#range-min').value = min;
+      if ($('#range-max')) $('#range-max').value = max;
+      $$('.range-preset-pill').forEach(p => p.classList.remove('active'));
+      rangePill.classList.add('active');
+      toast(`Rango establecido: ${min} – ${max} mg/L`);
+    }
+    return;
+  }
+});
+
+// Product Selection Handler with Visual & Field Synchronization
+function selectProduct(productType) {
+  state.product = productType;
+  $$('.choice').forEach(x => {
+    const isMatch = x.dataset.product === productType;
+    x.classList.toggle('selected', isMatch);
+    x.setAttribute('aria-pressed', isMatch ? 'true' : 'false');
+  });
+
+  const pres = $('#presentation');
+  const conc = $('#concentration');
+  if (productType === 'calcio') {
+    if (pres) pres.value = 'solid';
+    if (conc && (+conc.value === 7.5 || !conc.value)) conc.value = '65';
+    if (window.gotitaReact) window.gotitaReact('Seleccionaste Hipoclorito de calcio (sólido ~65%). Recuerda diluirlo antes de verterlo al reservorio ◈🧪');
+  } else {
+    if (pres) pres.value = 'liquid';
+    if (conc && (+conc.value === 65 || !conc.value)) conc.value = '7.5';
+    if (window.gotitaReact) window.gotitaReact('Seleccionaste Hipoclorito de sodio (líquido ~7.5%). Excelente para desinfección continua 💧✨');
+  }
+}
+
+// Synchronize presentation dropdown with choices
+const presSelect = $('#presentation');
+if (presSelect) {
+  presSelect.addEventListener('change', () => {
+    if (presSelect.value === 'solid') selectProduct('calcio');
+    else selectProduct('liquido');
+  });
+}
+
+// Multi-step Wizard Navigation
+let step = 1;
+function setStep(n) {
+  step = Math.max(1, Math.min(4, n));
+  $$('.step-pane').forEach(p => p.classList.toggle('active', +p.dataset.step === step));
+  $$('.steps span').forEach((s, i) => s.classList.toggle('on', i < step));
+}
+
+$$('.next').forEach(b => {
+  b.onclick = () => {
+    if (step === 1 && !+$('#dose-volume').value) {
+      return toast('Ingrese el volumen de agua antes de continuar.');
+    }
+    setStep(step + 1);
+  };
+});
+
+$$('.back').forEach(b => {
+  b.onclick = () => setStep(step - 1);
+});
+
+// Dose Calculation
+const calcDoseBtn = $('#calculate-dose');
+if (calcDoseBtn) {
+  calcDoseBtn.onclick = () => {
+    const volInput = +$('#dose-volume')?.value || 0;
+    const isM3 = $('#dose-unit')?.value === 'm3';
+    const vol = volInput * (isM3 ? 1000 : 1);
+    const c = +$('#concentration')?.value || 0;
+    const now = parseFloat($('#residual-now')?.value || '0');
+    const target = parseFloat($('#residual-target')?.value || '0');
+    const demand = parseFloat($('#demand')?.value || '0');
+
+    if (!vol || !c || isNaN(now) || !target) {
+      return toast('Complete el volumen, la concentración y los residuales.');
+    }
+
+    const active = Math.max(0, target - now + demand);
+    const grams = (active * vol) / 1000;
+    const product = grams / (c / 100);
+    const isSolid = state.product === 'calcio';
+    const unit = isSolid ? 'g' : 'mL';
+    
+    let productText = '';
+    if (product < 1000) {
+      productText = `${product.toLocaleString('es-PE', { maximumFractionDigits: 2 })} ${unit}`;
+    } else {
+      productText = `${(product / 1000).toLocaleString('es-PE', { maximumFractionDigits: 3 })} ${isSolid ? 'kg' : 'L'}`;
+    }
+
+    const resultBox = $('#dose-result');
+    if (resultBox) {
+      resultBox.innerHTML = `
+        <div class="dose-amount">
+          <small>DOSIS DE CLORO ACTIVO</small>
+          <strong>${active.toFixed(2)} mg/L</strong>
+          <small>Incremento requerido: objetivo − actual + demanda</small>
+        </div>
+        <div class="dose-amount">
+          <small>CANTIDAD TEÓRICA DE PRODUCTO</small>
+          <strong>${productText}</strong>
+          <small>Para ${vol.toLocaleString('es-PE')} L de agua · Producto al ${c}%</small>
+        </div>
+      `;
+    }
+    setStep(4);
+    if (window.gotitaReact) {
+      window.gotitaReact(`¡Dosis calculada: ${active.toFixed(2)} mg/L (${productText})! Recuerda esperar 30 min de contacto 💧⏱️`);
+    }
+  };
+}
+
+// Tank Type & Fields Configuration
+const fields = {
+  vertical: `
+    <div class="input-row">
+      <label>Diámetro (m)<input id="diameter" type="number" min="0" step="any" placeholder="Opcional si ingresa radio"></label>
+      <label>Radio (m)<input id="radius" type="number" min="0" step="any" placeholder="Opcional si ingresa diámetro"></label>
+    </div>
+    <div class="input-row">
+      <label>Altura total del tanque (m)<input id="total-height" type="number" min="0" step="any" placeholder="Ej. 3.0"></label>
+      <label>Altura actual del agua (m)<input id="water-height" type="number" min="0" step="any" placeholder="Ej. 2.4"></label>
+    </div>`,
+  rectangular: `
+    <div class="input-row">
+      <label>Largo (m)<input id="length" type="number" min="0" step="any" placeholder="Ej. 5.0"></label>
+      <label>Ancho (m)<input id="width" type="number" min="0" step="any" placeholder="Ej. 3.0"></label>
+    </div>
+    <div class="input-row">
+      <label>Altura total (m)<input id="total-height" type="number" min="0" step="any" placeholder="Ej. 2.5"></label>
+      <label>Altura actual del agua (m)<input id="water-height" type="number" min="0" step="any" placeholder="Ej. 2.0"></label>
+    </div>`,
+  cubic: `
+    <div class="input-row">
+      <label>Lado del cubo (m)<input id="side" type="number" min="0" step="any" placeholder="Ej. 2.0"></label>
+      <label>Altura actual del agua (m)<input id="water-height" type="number" min="0" step="any" placeholder="Ej. 1.8"><small>Si está lleno, ingrese el mismo lado.</small></label>
+    </div>`,
+  horizontal: `
+    <div class="input-row">
+      <label>Diámetro (m)<input id="diameter" type="number" min="0" step="any" placeholder="Ej. 2.0"></label>
+      <label>Longitud (m)<input id="length" type="number" min="0" step="any" placeholder="Ej. 6.0"></label>
+    </div>
+    <label>Nivel actual del agua (m)<input id="water-height" type="number" min="0" step="any" placeholder="Ej. 1.5"></label>`,
+  direct: `
+    <div class="input-row">
+      <label>Volumen conocido<input id="direct-volume" type="number" min="0" step="any" placeholder="Ej. 15000"></label>
+      <label>Unidad
+        <select id="direct-unit">
+          <option value="l">Litros (L)</option>
+          <option value="m3">Metros cúbicos (m³)</option>
+        </select>
+      </label>
+    </div>`
+};
+
+function tankFields() {
+  const tankSelect = $('#tank-type');
+  if (!tankSelect) return;
+  state.tank = tankSelect.value;
+  const container = $('#tank-fields');
+  if (container) container.innerHTML = fields[state.tank] || '';
+  const visual = $('#tank-visual');
+  if (visual) visual.className = `tank-visual ${state.tank}`;
+}
+
+const tankTypeEl = $('#tank-type');
+if (tankTypeEl) {
+  tankTypeEl.onchange = tankFields;
+  tankFields();
+}
+
+// Calculate Volume
+const calcVolBtn = $('#calculate-volume');
+if (calcVolBtn) {
+  calcVolBtn.onclick = () => {
+    const v = id => +$('#' + id)?.value || 0;
+    let vol = 0, cap = 0, h = 0, th = 0;
+
+    try {
+      if (state.tank === 'vertical') {
+        const r = v('radius') || v('diameter') / 2;
+        th = v('total-height');
+        h = v('water-height');
+        if (!r || !th || !h) throw Error();
+        cap = Math.PI * r * r * th;
+        vol = Math.PI * r * r * h;
+      } else if (state.tank === 'rectangular') {
+        th = v('total-height');
+        h = v('water-height');
+        const l = v('length'), w = v('width');
+        if (!l || !w || !th || !h) throw Error();
+        cap = l * w * th;
+        vol = l * w * h;
+      } else if (state.tank === 'cubic') {
+        const side = v('side');
+        h = v('water-height') || side;
+        th = side;
+        if (!side || !h) throw Error();
+        cap = side ** 3;
+        vol = side * side * h;
+      } else if (state.tank === 'horizontal') {
+        const r = v('diameter') / 2;
+        const L = v('length');
+        h = v('water-height');
+        th = 2 * r;
+        if (!r || !L || !h) throw Error();
+        cap = Math.PI * r * r * L;
+        if (h > 0 && h <= 2 * r) {
+          const a = r * r * Math.acos((r - h) / r) - (r - h) * Math.sqrt(2 * r * h - h * h);
+          vol = a * L;
+        }
+      } else {
+        const directVol = v('direct-volume');
+        if (!directVol) throw Error();
+        vol = directVol * ($('#direct-unit')?.value === 'm3' ? 1000 : 1);
+        cap = vol;
+        h = th = 1;
+      }
+
+      if (!vol || vol <= 0 || (th > 0 && h > th)) throw Error();
+    } catch (e) {
+      return toast('Revise las dimensiones: deben ser mayores que cero y físicamente posibles.');
+    }
+
+    state.volume = vol * (state.tank === 'direct' ? 1 : 1000);
+    state.capacity = cap * (state.tank === 'direct' ? 1 : 1000);
+    const pct = Math.min(100, Math.max(0, (state.volume / state.capacity) * 100));
+
+    const waterBar = $('.water');
+    if (waterBar) waterBar.style.height = pct + '%';
+    
+    const mainVol = $('#volume-main');
+    if (mainVol) mainVol.innerHTML = `${state.volume.toLocaleString('es-PE', { maximumFractionDigits: 1 })} <small>L</small>`;
+    
+    const m3Vol = $('#volume-m3');
+    if (m3Vol) m3Vol.textContent = (state.volume / 1000).toLocaleString('es-PE', { maximumFractionDigits: 3 });
+    
+    const capVol = $('#volume-capacity');
+    if (capVol) capVol.textContent = state.capacity.toLocaleString('es-PE', { maximumFractionDigits: 1 });
+    
+    const msgVol = $('#volume-message');
+    if (msgVol) msgVol.textContent = `Nivel de agua: ${pct.toFixed(0)}% de la capacidad total.`;
+    
+    const useVol = $('#use-volume');
+    if (useVol) useVol.disabled = false;
+
+    if (window.gotitaReact) {
+      window.gotitaReact(`¡Volumen calculado: ${state.volume.toLocaleString('es-PE')} L (${pct.toFixed(0)}% de llenado)! Listo para dosificar 📏💧`);
+    }
+  };
+}
+
+// Transfer Calculated Volume to Dosing Assistant
+const useVolBtn = $('#use-volume');
+if (useVolBtn) {
+  useVolBtn.onclick = () => {
+    const doseVolInput = $('#dose-volume');
+    const doseUnitSelect = $('#dose-unit');
+    if (doseVolInput) doseVolInput.value = state.volume.toFixed(1);
+    if (doseUnitSelect) doseUnitSelect.value = 'l';
+    go('dosis');
+    setStep(2);
+    toast('Volumen aplicado. Continúe con el paso 2.');
+    if (window.gotitaReact) {
+      window.gotitaReact(`¡Volumen de ${state.volume.toLocaleString('es-PE')} L transferido con éxito! Selecciona tu producto 🎯💧`);
+    }
+  };
+}
+
+// Residual Verification Engine
+function statusFor(x, min, max) {
+  if (x >= min && x <= max) {
+    return ['good', '●', 'Dentro del rango', 'Adecuado según el rango de referencia ingresado.'];
+  } else if (x < min) {
+    return ['warn', '!', 'Requiere verificación', 'El residual está por debajo del rango de referencia.'];
+  } else {
+    return ['bad', '!', 'Fuera del rango', 'El residual está por encima del rango de referencia.'];
+  }
+}
+
+const verifyBtn = $('#verify-btn');
+if (verifyBtn) {
+  verifyBtn.onclick = () => {
+    const x = parseFloat($('#verified-residual')?.value || '');
+    const min = parseFloat($('#range-min')?.value || '0.5');
+    const max = parseFloat($('#range-max')?.value || '1.0');
+
+    if (isNaN(x) || isNaN(min) || isNaN(max) || min > max) {
+      return toast('Ingrese una medición y un rango válido.');
+    }
+
+    const [c, i, t, p] = statusFor(x, min, max);
+    const box = $('#verification-result');
+    if (box) {
+      box.className = 'verification-card ' + c;
+      box.innerHTML = `<span>${i}</span><h3>${t}</h3><p><b>${x.toFixed(2)} mg/L</b> · Rango: ${min}–${max} mg/L</p><p>${p}</p>`;
+    }
+
+    saveMeasurement({
+      value: x,
+      min,
+      max,
+      status: t,
+      point: $('#measurement-point')?.value || 'Punto no especificado',
+      date: new Date().toLocaleString('es-PE')
+    });
+    renderLast();
+    toast('Verificación registrada en el historial.');
+
+    if (window.gotitaReact) {
+      if (c === 'good') window.gotitaReact(`¡Excelente! Residual de ${x.toFixed(2)} mg/L dentro de norma. Agua 100% segura 🌟💧`);
+      else if (c === 'warn') window.gotitaReact(`⚠️ Residual bajo (${x.toFixed(2)} mg/L). Se recomienda revisar dosificador o dosis.`);
+      else window.gotitaReact(`🚫 Residual alto (${x.toFixed(2)} mg/L). Ajusta el dosificador para evitar olores y sabores.`);
+    }
+  };
+}
+
+// Equipment Flow & Calibration
+const flowCalcBtn = $('#flow-calc');
+if (flowCalcBtn) {
+  flowCalcBtn.onclick = () => {
+    const q = +$('#flow-water')?.value || 0;
+    const d = +$('#flow-dose')?.value || 0;
+    const c = +$('#flow-conc')?.value || 0;
+    if (!q || !d || !c) return toast('Complete los datos de caudal, dosis y concentración.');
+    const mlh = (q * d) / (c * 10);
+    const resBox = $('#flow-result');
+    if (resBox) {
+      resBox.innerHTML = `<b>Caudal requerido:</b><br>${(mlh / 60).toFixed(2)} mL/min · ${mlh.toFixed(2)} mL/h · ${(mlh / 1000).toFixed(3)} L/h`;
+    }
+    if (window.gotitaReact) window.gotitaReact(`¡Caudal requerido: ${(mlh / 60).toFixed(2)} mL/min! Comprueba con probeta graduada 🧪`);
+  };
+}
+
+const testCalcBtn = $('#test-calc');
+if (testCalcBtn) {
+  testCalcBtn.onclick = () => {
+    const v = +$('#observed-volume')?.value || 0;
+    const t = +$('#observed-time')?.value || 0;
+    if (!v || !t) return toast('Ingrese volumen y tiempo de prueba.');
+    const realFlow = v / t;
+    const resBox = $('#test-result');
+    if (resBox) {
+      resBox.innerHTML = `<b>Caudal real observado:</b><br>${realFlow.toFixed(2)} mL/min · ${(realFlow * 60).toFixed(2)} mL/h`;
+    }
+    if (window.gotitaReact) window.gotitaReact(`¡Prueba completada: ${realFlow.toFixed(2)} mL/min! Compara con el caudal requerido ⏱️💧`);
+  };
+}
+
+// Dilution Calculator
+const dilutionBtn = $('#dilution-calc');
+if (dilutionBtn) {
+  dilutionBtn.onclick = () => {
+    const ci = +$('#dilution-initial')?.value || 0;
+    const ct = +$('#dilution-target')?.value || 0;
+    const v = +$('#dilution-volume')?.value || 0;
+    if (!ci || !ct || !v || ct >= ci) {
+      return toast('La concentración deseada debe ser menor que la inicial.');
+    }
+    const prod = (v * ct) / ci;
+    const water = v - prod;
+    const resBox = $('#dilution-result');
+    if (resBox) {
+      resBox.innerHTML = `<span>⊕</span><h3>Solución final: ${v.toFixed(2)} L</h3><p>Mezcle <b>${prod.toFixed(3)} L (${(prod * 1000).toFixed(0)} mL)</b> de producto comercial con <b>${water.toFixed(3)} L</b> de agua para obtener una solución al ${ct}%.</p>`;
+    }
+    if (window.gotitaReact) window.gotitaReact(`¡Solución calculada! Recuerda: vierte siempre el cloro sobre el agua con tu EPP 🦺⚠️`);
+  };
+}
+
+// Local Storage & History Persistence
+const get = k => {
+  try { return JSON.parse(localStorage.getItem(k) || '[]'); } catch (e) { return []; }
+};
+const put = (k, x) => {
+  try { localStorage.setItem(k, JSON.stringify(x)); } catch (e) {}
+};
+
+function saveMeasurement(x) {
+  const a = get('cloragua-measurements');
+  a.unshift(x);
+  put('cloragua-measurements', a);
+}
+
+function renderHistory() {
+  const searchInput = $('#history-search');
+  const stateSelect = $('#history-state');
+  const list = $('#history-list');
+  if (!list) return;
+
+  const q = (searchInput?.value || '').toLowerCase();
+  const f = stateSelect?.value || '';
+  const all = get('cloragua-measurements');
+  const filtered = all.filter(x => (!f || x.status === f) && (`${x.point} ${x.status}`).toLowerCase().includes(q));
+
+  if (!filtered.length) {
+    list.innerHTML = `<div class="empty-state" style="padding: 24px; text-align: center; color: var(--on-surface-variant);">No hay mediciones que coincidan con los filtros.</div>`;
+    return;
+  }
+
+  list.innerHTML = filtered.map(x => `
+    <article class="history-item">
+      <div>
+        <h3>${x.value.toFixed(2)} mg/L · ${x.point}</h3>
+        <p>${x.date} · Rango: ${x.min}–${x.max} mg/L</p>
+      </div>
+      <span class="pill ${x.status === 'Dentro del rango' ? 'good' : x.status === 'Fuera del rango' ? 'bad' : 'warn'}">${x.status}</span>
+    </article>
+  `).join('');
+}
+
+const historySearch = $('#history-search');
+if (historySearch) historySearch.oninput = renderHistory;
+const historyState = $('#history-state');
+if (historyState) historyState.onchange = renderHistory;
+
+function renderLast() {
+  const x = get('cloragua-measurements')[0];
+  const box = $('#last-measurement');
+  if (!box) return;
+  if (x) {
+    box.innerHTML = `<b>${x.value.toFixed(2)} mg/L</b> · ${x.point}<br><small>${x.date} · ${x.status}</small>`;
+  }
+}
+renderLast();
+
+// Water Systems Registration
+const saveSysBtn = $('#save-system');
+if (saveSysBtn) {
+  saveSysBtn.onclick = () => {
+    const name = ($('#sys-name')?.value || '').trim();
+    if (!name) return toast('Ingrese el nombre del sistema.');
+    const a = get('cloragua-systems');
+    a.unshift({
+      name,
+      town: $('#sys-town')?.value || '',
+      district: $('#sys-district')?.value || '',
+      tank: $('#sys-tank')?.value || '',
+      volume: $('#sys-volume')?.value || '',
+      person: $('#sys-person')?.value || ''
+    });
+    put('cloragua-systems', a);
+    toast('Sistema guardado correctamente.');
+    renderSystems();
+    if (window.gotitaReact) window.gotitaReact(`¡Sistema "${name}" registrado con éxito en tu inventario! 📋🌟`);
+  };
+}
+
+function renderSystems() {
+  const list = $('#systems-list');
+  if (!list) return;
+  const a = get('cloragua-systems');
+  if (!a.length) {
+    list.innerHTML = '<div class="empty-state" style="padding: 24px; text-align: center; color: var(--on-surface-variant);">Aún no hay sistemas registrados.</div>';
+    return;
+  }
+  list.innerHTML = a.map((x, i) => `
+    <article class="record">
+      <div>
+        <h3>${x.name}</h3>
+        <p>${x.town || 'Sin centro poblado'} · ${x.district || 'Sin distrito'} · ${x.tank || 'Tanque no especificado'} · ${x.volume || '—'} L</p>
+      </div>
+      <button class="delete" data-i="${i}">Eliminar</button>
+    </article>
+  `).join('');
+
+  $$('.delete').forEach(b => {
+    b.onclick = () => {
+      const items = get('cloragua-systems');
+      items.splice(+b.dataset.i, 1);
+      put('cloragua-systems', items);
+      renderSystems();
+      toast('Sistema eliminado.');
+    };
+  });
 }
 renderSystems();
 
-$('#export-csv').onclick=()=>{
-  let a=get('cloragua-measurements');
-  if(!a.length)return toast('No hay mediciones para exportar.');
-  let csv='Fecha,Punto,Residual mg/L,Rango,Estado\n'+a.map(x=>`"${x.date}","${x.point}",${x.value},"${x.min}-${x.max}","${x.status}"`).join('\n'),url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'})),link=document.createElement('a');
-  link.href=url;link.download='historial-cloragua.csv';link.click();URL.revokeObjectURL(url);
-  if(window.gotitaReact) window.gotitaReact(`¡Historial exportado en CSV para tus reportes sanitarios! 📊💾`);
-};
+// CSV Export
+const exportBtn = $('#export-csv');
+if (exportBtn) {
+  exportBtn.onclick = () => {
+    const a = get('cloragua-measurements');
+    if (!a.length) return toast('No hay mediciones para exportar.');
+    const csv = 'Fecha,Punto,Residual mg/L,Rango,Estado\n' + a.map(x => `"${x.date}","${x.point}",${x.value},"${x.min}-${x.max}","${x.status}"`).join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'historial-cloragua.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+    if (window.gotitaReact) window.gotitaReact('¡Historial exportado en CSV para tus reportes sanitarios! 📊💾');
+  };
+}
 
-const norm=localStorage.getItem('cloragua-norm-date')||new Date().toLocaleDateString('es-PE');
-$('#norm-date').textContent=norm;
-$('#update-norm').onclick=()=>{
-  let d=new Date().toLocaleDateString('es-PE');
-  localStorage.setItem('cloragua-norm-date',d);
-  $('#norm-date').textContent=d;
-  toast('Fecha de referencia actualizada.');
-  if(window.gotitaReact) window.gotitaReact(`¡Fecha de referencia normativa actualizada a ${d}! 📖`);
-};
+// Technical Norms
+const norm = localStorage.getItem('cloragua-norm-date') || new Date().toLocaleDateString('es-PE');
+if ($('#norm-date')) $('#norm-date').textContent = norm;
+const updateNormBtn = $('#update-norm');
+if (updateNormBtn) {
+  updateNormBtn.onclick = () => {
+    const d = new Date().toLocaleDateString('es-PE');
+    localStorage.setItem('cloragua-norm-date', d);
+    if ($('#norm-date')) $('#norm-date').textContent = d;
+    toast('Fecha de referencia actualizada.');
+    if (window.gotitaReact) window.gotitaReact(`¡Fecha de referencia normativa actualizada a ${d}! 📖`);
+  };
+}
+
+// Help button
+$$('.help').forEach(btn => {
+  btn.onclick = () => {
+    toast('CLORAGUA: Ingrese volumen y residual para obtener la dosificación exacta recomendada.');
+    if (window.gotitaReact) window.gotitaReact('¿Dudas técnicas? ¡Estoy aquí para ayudarte en cualquier cálculo! 💡💧');
+  };
+});
 
 /* =========================================================
    GOTITA 3D INTERACTIVE MASCOT & MULTI-PAGE ADVICE ENGINE
