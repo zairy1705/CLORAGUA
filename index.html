@@ -1,0 +1,599 @@
+<!doctype html>
+<html class="light" lang="es">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ClorAgua - Inicio · Calcula. Dosifica. Mide. Verifica.</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .bubble-anim {
+      animation: float 4s ease-in-out infinite;
+    }
+    @keyframes float {
+      0% { transform: translateY(0px); }
+      50% { transform: translateY(-8px); }
+      100% { transform: translateY(0px); }
+    }
+    .squishy-btn {
+      border-bottom-width: 4px;
+      transition: all 0.15s ease;
+    }
+    .squishy-btn:active {
+      border-bottom-width: 0px;
+      transform: translateY(4px);
+    }
+  </style>
+</head>
+<body>
+<!-- STITCH_SHADER_START:ANIMATION_7 class="fixed inset-0 w-full h-full" -->
+<div class="fixed inset-0 w-full h-full shader-bg-container" style="display:block;">
+<canvas id="shader-canvas-ANIMATION_7" style="display:block;width:100%;height:100%"></canvas>
+<script>
+(function() {
+  const canvas = document.getElementById('shader-canvas-ANIMATION_7');
+
+  function syncSize() {
+    const w = canvas.clientWidth  || 1280;
+    const h = canvas.clientHeight || 720;
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width  = w;
+      canvas.height = h;
+    }
+  }
+  if (typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(syncSize).observe(canvas);
+  }
+  syncSize();
+
+  const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+  if (!gl) return;
+  const vs = `attribute vec2 a_position;
+varying vec2 v_texCoord;
+void main() {
+  v_texCoord = a_position * 0.5 + 0.5;
+  gl_Position = vec4(a_position, 0.0, 1.0);
+}`;
+  const fs = `precision highp float;
+uniform float u_time;
+uniform vec2 u_resolution;
+uniform vec2 u_mouse;
+varying vec2 v_texCoord;
+
+void main() {
+    vec2 uv = v_texCoord;
+    
+    // Base colors matching ClorAgua design system
+    vec3 colorPrimary = vec3(0.0, 0.412, 0.420); // #00696b (Primary Teal)
+    vec3 colorCyan = vec3(0.0, 0.808, 0.820);    // #00ced1 (Primary Container)
+    vec3 colorSurface = vec3(0.976, 0.976, 1.0); // #f9f9ff (Background Surface)
+    vec3 colorHigh = vec3(0.867, 0.914, 1.0);    // #dde9ff (Surface Container High)
+    
+    // Gentle fluid waves
+    float time = u_time * 0.4;
+    float wave1 = sin(uv.x * 2.8 + time) * 0.5 + 0.5;
+    wave1 += sin(uv.y * 1.8 - time * 0.6) * 0.3;
+    
+    float wave2 = sin(uv.x * 5.0 - time * 1.2 + uv.y * 2.0) * 0.2;
+    wave2 += cos(uv.y * 4.0 + time * 0.9) * 0.2;
+    
+    float mask = (wave1 + wave2) * 0.5;
+    
+    // Soft subtle water texture
+    vec3 finalColor = mix(colorSurface, colorHigh, mask * 0.65);
+    finalColor = mix(finalColor, colorCyan, mask * 0.12);
+    
+    // Subtle mouse interaction
+    vec2 mouse = u_mouse / u_resolution;
+    float dist = distance(uv, mouse);
+    float ripple = sin(dist * 18.0 - u_time * 3.5) * exp(-dist * 4.5);
+    finalColor += ripple * 0.03;
+    
+    // Fade out towards top
+    finalColor = mix(finalColor, colorSurface, uv.y * 0.5);
+    
+    gl_FragColor = vec4(finalColor, 1.0);
+}`;
+  function cs(type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    return s;
+  }
+  const prog = gl.createProgram();
+  gl.attachShader(prog, cs(gl.VERTEX_SHADER, vs));
+  gl.attachShader(prog, cs(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(prog);
+  gl.useProgram(prog);
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+  const pos = gl.getAttribLocation(prog, 'a_position');
+  gl.enableVertexAttribArray(pos);
+  gl.vertexAttribPointer(pos, 2, gl.FLOAT, false, 0, 0);
+  const uTime = gl.getUniformLocation(prog, 'u_time');
+  const uRes = gl.getUniformLocation(prog, 'u_resolution');
+  const uMouse = gl.getUniformLocation(prog, 'u_mouse');
+
+  let mouse = { x: canvas.width / 2, y: canvas.height / 2 };
+  window.addEventListener('mousemove', (event) => {
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width && rect.height) {
+      const nx = (event.clientX - rect.left) / rect.width;
+      const ny = 1.0 - (event.clientY - rect.top) / rect.height;
+      mouse.x = nx * canvas.width;
+      mouse.y = ny * canvas.height;
+    }
+  });
+
+  function render(t) {
+    if (typeof ResizeObserver === 'undefined') syncSize();
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    if (uTime) gl.uniform1f(uTime, t * 0.001);
+    if (uRes) gl.uniform2f(uRes, canvas.width, canvas.height);
+    if (uMouse) gl.uniform2f(uMouse, mouse.x, mouse.y);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    requestAnimationFrame(render);
+  }
+  render(0);
+})();
+</script>
+</div>
+<!-- STITCH_SHADER_END:ANIMATION_7 -->
+<aside class="sidebar">
+  <a class="brand" href="#inicio"><span class="brand-mark"><span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1; font-size: 20px;">water_drop</span></span><span>CLOR<span>AGUA</span><small>GESTIÓN DEL AGUA SEGURA</small></span></a>
+  <nav>
+    <button class="nav active" data-view="inicio"><span class="material-symbols-outlined nav-icon">home</span> Inicio</button>
+    <button class="nav" data-view="dosis"><span class="material-symbols-outlined nav-icon">calculate</span> Calcular dosis</button>
+    <button class="nav" data-view="volumen"><span class="material-symbols-outlined nav-icon">water</span> Volumen del tanque</button>
+    <button class="nav" data-view="verificar"><span class="material-symbols-outlined nav-icon">verified</span> Verificar residual</button>
+    <button class="nav" data-view="calibrar"><span class="material-symbols-outlined nav-icon">tune</span> Calibrar dosificador</button>
+    <button class="nav" data-view="solucion"><span class="material-symbols-outlined nav-icon">science</span> Preparar solución</button>
+    <button class="nav" data-view="sistemas"><span class="material-symbols-outlined nav-icon">domain</span> Sistemas de agua</button>
+    <button class="nav" data-view="historial"><span class="material-symbols-outlined nav-icon">history</span> Historial</button>
+    <button class="nav" data-view="normativa"><span class="material-symbols-outlined nav-icon">menu_book</span> Normativa y guías</button>
+  </nav>
+  <div class="side-note"><span class="material-symbols-outlined" style="font-size: 14px; color: var(--secondary); vertical-align: middle; margin-right: 4px;">shield</span> <b>Apoyo Técnico</b><br><small>Verifique siempre en campo con equipo calibrado.</small></div>
+</aside>
+<main>
+  <header><button class="menu"><span class="material-symbols-outlined">menu</span></button><div><p id="view-label">PANEL PRINCIPAL</p><h2 id="view-title">Buen día, operador</h2></div><div class="header-status"><button id="bgm-toggle-btn" class="bgm-header-btn" title="Música alegre de fondo"><span class="bgm-icon">🎵</span> <span class="bgm-label">Música</span></button><span class="status-indicator"></span> Sistema listo <button class="help" title="Ayuda"><span class="material-symbols-outlined" style="font-size: 16px;">help</span></button></div></header>
+
+  <section id="inicio" class="view active">
+    <div class="welcome">
+      <div class="welcome-text">
+        <div class="live-pill"><span class="material-symbols-outlined" style="font-size: 14px;">wifi</span> LIVE &bull; TELEMETRÍA ACTIVA</div>
+        <h1 class="welcome-heading">Agua Saludable,<br><span class="highlight-coral">¡Misión Cumplida!</span></h1>
+        <p class="welcome-description">Navega por la seguridad hídrica con nuestra tecnología de cloración avanzada. Nivel médico, precisión de telemetría y una experiencia fluida.</p>
+        <div class="welcome-actions">
+          <button class="squishy-tertiary-btn" data-go="dosis"><span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">rocket_launch</span> ¡Empezar Consulta!</button>
+          <button class="squishy-secondary-btn gotita-interact-btn" id="gotita-wave-btn">👋 Saludar a Gotita</button>
+        </div>
+      </div>
+      <div class="gotita-hero-wrapper" id="gotita-wrapper" title="¡Haz clic o mueve el mouse para interactuar con Gotita 3D!">
+        <div class="gotita-speech" id="gotita-speech">¡Hola! Soy Gotita 💧 ¡Mueve el cursor o tócame para interactuar!</div>
+        <div class="gotita-canvas-box">
+          <canvas id="gotita-3d-canvas" width="380" height="360"></canvas>
+          <div class="gotita-shadow"></div>
+          <div class="gotita-interactive-hint">✨ ¡Tócame para hacerme cosquillas! 🤭</div>
+        </div>
+        <div class="gotita-controls">
+          <button class="gotita-action-pill highlight" id="gotita-tickle-btn">🤭 Cosquillas</button>
+          <button class="gotita-action-pill" id="gotita-jump-btn">⚡ Brincar</button>
+          <button class="gotita-action-pill" id="gotita-spin-btn">🌀 Girar</button>
+          <button class="gotita-action-pill music-toggle-pill" id="gotita-music-btn" title="Reproducir música alegre">🎵 Música</button>
+          <button class="gotita-action-pill" id="gotita-tip-btn">💡 Consejo</button>
+          <button class="gotita-action-pill mute-toggle-pill" id="gotita-mute-btn" title="Silenciar / Activar sonido">🔊 Sonido</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bento Grid Features inspired by design tokens -->
+    <div class="bento-grid">
+      <!-- Feature 1: Pureza Total -->
+      <div class="bento-card feature-1">
+        <div class="card-glow glow-mint"></div>
+        <div class="bento-icon-box bg-secondary-fixed bubble-anim">
+          <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">medical_services</span>
+        </div>
+        <h3 class="bento-title">Nivel Quirófano: Pureza Total</h3>
+        <p class="bento-desc">Calidad de agua certificada para los entornos más exigentes. Limpieza cristalina y segura.</p>
+      </div>
+
+      <!-- Feature 2: Escudo Anti-Gérmenes -->
+      <div class="bento-card feature-2">
+        <div class="card-glow glow-cyan"></div>
+        <div class="feature-2-layout">
+          <div class="feature-2-text">
+            <div class="bento-icon-box bg-primary-fixed bubble-anim">
+              <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">shield</span>
+            </div>
+            <h3 class="bento-title">Escudo Anti-Gérmenes</h3>
+            <p class="bento-desc">Prevención proactiva contra Legionella. Tu instalación protegida 24/7 con nuestro escudo de defensa líquida.</p>
+          </div>
+          <div class="feature-2-chart-box">
+            <div class="simulated-bar-chart">
+              <div class="sim-bar" style="height: 66%;"></div>
+              <div class="sim-bar" style="height: 75%;"></div>
+              <div class="sim-bar" style="height: 50%;"></div>
+              <div class="sim-bar active-bar" style="height: 100%;">
+                <span class="bar-badge">99%</span>
+              </div>
+              <div class="sim-bar" style="height: 80%;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Feature 3: Telemetría Legendaria -->
+      <div class="bento-card feature-3">
+        <div class="feature-3-header">
+          <div class="live-tag">
+            <span class="material-symbols-outlined" style="font-size: 15px;">wifi</span> LIVE
+          </div>
+          <h3 class="bento-title">Telemetría Legendaria</h3>
+          <p class="bento-desc">Monitoreo en tiempo real. Obtén estadísticas al estilo de tu juego favorito, asegurando la victoria sobre las bacterias.</p>
+        </div>
+        <div class="telemetry-grid">
+          <div class="telemetry-box">
+            <div class="telemetry-val text-primary">7.2</div>
+            <div class="telemetry-lbl">NIVEL pH</div>
+          </div>
+          <div class="telemetry-box">
+            <div class="telemetry-val text-secondary">0.8</div>
+            <div class="telemetry-lbl">CLORO (PPM)</div>
+          </div>
+          <div class="telemetry-box">
+            <div class="telemetry-val text-primary">24°</div>
+            <div class="telemetry-lbl">TEMP AGUA</div>
+          </div>
+          <div class="telemetry-box optimal-box">
+            <div class="optimal-icon bg-secondary-fixed">
+              <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">done_all</span>
+            </div>
+            <div class="telemetry-lbl text-secondary font-bold">ÓPTIMO</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cycle of Water Quality -->
+    <div class="cycle">
+      <div><b>01</b><span class="material-symbols-outlined cycle-icon">water</span><span><strong>Define el tanque</strong><small>Calcula el volumen real</small></span></div>
+      <div><b>02</b><span class="material-symbols-outlined cycle-icon">calculate</span><span><strong>Calcula la dosis</strong><small>Según producto y residual</small></span></div>
+      <div><b>03</b><span class="material-symbols-outlined cycle-icon">verified</span><span><strong>Verifica en campo</strong><small>Mide tras el contacto</small></span></div>
+      <div><b>04</b><span class="material-symbols-outlined cycle-icon">history_edu</span><span><strong>Registra el resultado</strong><small>Conserva la vigilancia</small></span></div>
+    </div>
+
+    <div class="dashboard">
+      <article class="status-card">
+        <div class="card-title">
+          <span><span class="material-symbols-outlined" style="font-size: 14px; vertical-align: middle;">analytics</span> ÚLTIMA MEDICIÓN</span>
+          <button data-go="historial">Ver historial →</button>
+        </div>
+        <div id="last-measurement" class="metric-chart">
+          <p>Cloro residual libre (mg/L)</p>
+          <div class="chart-label"><b>0.85</b><span>óptimo</span></div>
+          <svg class="metric-line" viewBox="0 0 600 135" preserveAspectRatio="none" aria-label="Tendencia semanal de cloro residual">
+            <path d="M0,110 C65,35 105,38 165,77 S265,99 330,43 S425,9 485,90 S550,130 600,30" fill="none" stroke="#00696b" stroke-width="4.5" stroke-linecap="round"/>
+            <path d="M0,110 C65,35 105,38 165,77 S265,99 330,43 S425,9 485,90 S550,130 600,30 L600,135 L0,135Z" fill="#8ff6d0" opacity=".35"/>
+          </svg>
+          <p>Volumen tratado (m³)</p>
+          <div class="bars">
+            <i style="height:56%"></i><i style="height:82%"></i><i style="height:42%"></i><i style="height:94%"></i><i style="height:67%"></i><i style="height:53%"></i><i style="height:78%"></i>
+          </div>
+        </div>
+      </article>
+
+      <article class="quick">
+        <p><span class="material-symbols-outlined" style="font-size: 14px; vertical-align: middle;">bolt</span> ACCESOS RÁPIDOS</p>
+        <button data-go="volumen" class="quick-nav-btn"><span class="material-symbols-outlined">water</span> Calcular volumen <b>→</b></button>
+        <button data-go="verificar" class="quick-nav-btn"><span class="material-symbols-outlined">verified</span> Verificar residual <b>→</b></button>
+        <button data-go="solucion" class="quick-nav-btn"><span class="material-symbols-outlined">science</span> Preparar solución <b>→</b></button>
+      </article>
+    </div>
+  </section>
+
+  <section id="dosis" class="view">
+    <div class="page-head">
+      <p class="eyebrow">ASISTENTE DE DOSIFICACIÓN</p>
+      <h1>Calcular dosis teórica</h1>
+      <p>Complete los pasos. El resultado es una estimación que requiere verificación en campo.</p>
+    </div>
+    <div class="steps"><span class="on">1 <small>Tanque</small></span><i></i><span>2 <small>Producto</small></span><i></i><span>3 <small>Residual</small></span><i></i><span>4 <small>Resultado</small></span></div>
+    <div class="wizard">
+      <div class="form-card">
+        <div class="step-pane active" data-step="1">
+          <h3>¿Cuál es el volumen real de agua?</h3>
+          <p class="hint">Use el volumen calculado o ingréselo directamente.</p>
+          <div class="input-row">
+            <label>Volumen de agua<input id="dose-volume" type="number" min="0" step="any" placeholder="Ej. 10000"></label>
+            <label>Unidad<select id="dose-unit"><option value="l">Litros (L)</option><option value="m3">Metros cúbicos (m³)</option></select></label>
+          </div>
+          <button class="text-btn" data-go="volumen">◈ Calcular volumen del tanque</button>
+          <button class="squishy-primary-btn next">Continuar <b>→</b></button>
+        </div>
+        <div class="step-pane" data-step="2">
+          <h3>Producto de cloro</h3>
+          <div class="choice-row">
+            <button class="choice selected" data-product="liquido">💧 Hipoclorito de sodio<br><small>Producto líquido</small></button>
+            <button class="choice" data-product="calcio">◈ Hipoclorito de calcio<br><small>Producto sólido</small></button>
+          </div>
+          <div class="input-row">
+            <label>Concentración de cloro activo<input id="concentration" type="number" min="0.01" max="100" step="any" value="7.5"><small>% según etiqueta o ficha técnica</small></label>
+            <label>Presentación<select id="presentation"><option value="liquid">Líquida</option><option value="solid">Sólida</option></select><small>Puede modificarla según su producto.</small></label>
+          </div>
+          <p class="warning">⚠ Verifique que la concentración corresponda al cloro activo declarado por el fabricante.</p>
+          <button class="secondary back">← Anterior</button>
+          <button class="squishy-primary-btn next">Continuar <b>→</b></button>
+        </div>
+        <div class="step-pane" data-step="3">
+          <h3>Medición de cloro residual</h3>
+          <div class="input-row three">
+            <label>Residual libre actual<input id="residual-now" type="number" min="0" step="0.01" placeholder="Ej. 0.20"><small>mg/L, medido en campo</small></label>
+            <label>Residual objetivo<input id="residual-target" type="number" min="0" step="0.01" value="0.80"><small>mg/L, según su parámetro operativo</small></label>
+            <label>Demanda estimada<input id="demand" type="number" min="0" step="0.01" value="0"><small>mg/L (opcional)</small></label>
+          </div>
+          <p class="warning blue">ⓘ El rango normativo puede variar según punto y condición del sistema. Mantenga sus parámetros actualizados.</p>
+          <button class="secondary back">← Anterior</button>
+          <button class="squishy-primary-btn" id="calculate-dose">Calcular dosis <b>→</b></button>
+        </div>
+        <div class="step-pane result-pane" data-step="4">
+          <p class="eyebrow">RESULTADO DE LA DOSIFICACIÓN</p>
+          <h3>Dosis teórica calculada</h3>
+          <div id="dose-result"></div>
+          <p class="result-note">Esta es una estimación técnica. Dosifique, respete el tiempo de contacto aplicable y mida nuevamente el cloro residual.</p>
+          <button class="secondary back">← Ajustar datos</button>
+          <button class="squishy-tertiary-btn" data-go="verificar">Verificar en campo <b>→</b></button>
+        </div>
+      </div>
+      <aside class="assistant-card">
+        <span>💧</span>
+        <h3>Asistente CLORAGUA</h3>
+        <p>El volumen real y la concentración declarada del producto son claves para reducir errores de cálculo.</p>
+        <div><b>¿Necesita ayuda?</b><br><small>Primero mida o calcule el volumen de agua almacenada, no la capacidad total si el reservorio no está lleno.</small></div>
+      </aside>
+    </div>
+  </section>
+
+  <section id="volumen" class="view">
+    <div class="page-head">
+      <p class="eyebrow">CÁLCULO DE VOLUMEN</p>
+      <h1>Volumen del tanque</h1>
+      <p>Determine el volumen real de agua almacenada antes de dosificar.</p>
+    </div>
+    <div class="volume-layout">
+      <div class="form-card">
+        <label>Tipo de tanque
+          <select id="tank-type">
+            <option value="vertical">Cilíndrico vertical</option>
+            <option value="rectangular">Cisterna rectangular</option>
+            <option value="cubic">Tanque cúbico</option>
+            <option value="horizontal">Cilíndrico horizontal (avanzado)</option>
+            <option value="direct">Ingresar volumen directamente</option>
+          </select>
+        </label>
+        <div id="tank-fields"></div>
+        <button id="calculate-volume" class="squishy-primary-btn">Calcular volumen <b>→</b></button>
+      </div>
+      <div class="tank-card">
+        <div id="tank-visual" class="tank-visual vertical"><div class="water"></div><span>AGUA</span></div>
+        <p>VOLUMEN CALCULADO</p>
+        <h2 id="volume-main">— <small>L</small></h2>
+        <div class="volume-stats">
+          <div><b id="volume-m3">—</b><small>m³ de agua</small></div>
+          <div><b id="volume-capacity">—</b><small>L capacidad total</small></div>
+        </div>
+        <p id="volume-message" class="hint">Ingrese las dimensiones para visualizar el nivel.</p>
+        <button id="use-volume" class="text-btn" disabled>Usar este volumen para dosificar →</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="verificar" class="view">
+    <div class="page-head">
+      <p class="eyebrow">VERIFICACIÓN POSTERIOR</p>
+      <h1>Verificación en campo</h1>
+      <p>Realice la medición tras el tiempo de contacto correspondiente.</p>
+    </div>
+    <div class="verify-layout">
+      <div class="form-card">
+        <h3>🔬 Medición de cloro residual</h3>
+        <label>Cloro residual libre obtenido<input id="verified-residual" type="number" min="0" step="0.01" placeholder="mg/L"></label>
+        <label>Rango de referencia operativo
+          <div class="input-row"><input id="range-min" type="number" value="0.5" step="0.01"><input id="range-max" type="number" value="1" step="0.01"></div>
+          <small>mg/L · Ajustable según norma, punto y protocolo vigente.</small>
+        </label>
+        <label>Punto de medición<input id="measurement-point" placeholder="Ej. salida del reservorio"></label>
+        <button id="verify-btn" class="squishy-primary-btn">Evaluar resultado <b>→</b></button>
+      </div>
+      <div id="verification-result" class="verification-card">
+        <span>◌</span>
+        <h3>Esperando medición</h3>
+        <p>Ingrese el resultado para conocer el estado de referencia.</p>
+      </div>
+    </div>
+    <div class="advice">
+      <h3>Si el resultado está fuera del rango</h3>
+      <ul>
+        <li>Revise la concentración real del producto.</li>
+        <li>Verifique el volumen real y el dosificador.</li>
+        <li>Compruebe el equipo de medición y tiempo de contacto.</li>
+        <li>Evalúe la demanda de cloro y mida nuevamente.</li>
+      </ul>
+      <p>Una medición no confirma por sí sola la potabilidad microbiológica.</p>
+    </div>
+  </section>
+
+  <section id="calibrar" class="view">
+    <div class="page-head">
+      <p class="eyebrow">CONTROL DE EQUIPOS</p>
+      <h1>Calibrar dosificador</h1>
+      <p>Calcule el caudal requerido y compare con una prueba real.</p>
+    </div>
+    <div class="two-cards">
+      <div class="form-card">
+        <h3>Caudal requerido</h3>
+        <div class="input-row">
+          <label>Caudal de agua<input id="flow-water" type="number" step="any" placeholder="L/h"></label>
+          <label>Dosis requerida<input id="flow-dose" type="number" step="any" placeholder="mg/L"></label>
+        </div>
+        <label>Concentración de solución<input id="flow-conc" type="number" step="any" value="7.5"><small>% de cloro activo</small></label>
+        <button id="flow-calc" class="squishy-primary-btn">Calcular caudal</button>
+        <div id="flow-result" class="mini-result">Ingrese los datos para calcular.</div>
+      </div>
+      <div class="form-card">
+        <h3>Prueba de calibración</h3>
+        <div class="input-row">
+          <label>Volumen observado<input id="observed-volume" type="number" step="any" placeholder="mL"></label>
+          <label>Tiempo de prueba<input id="observed-time" type="number" step="any" placeholder="min"></label>
+        </div>
+        <button id="test-calc" class="secondary">Calcular caudal real</button>
+        <div id="test-result" class="mini-result">Registre una prueba de campo.</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="solucion" class="view">
+    <div class="page-head">
+      <p class="eyebrow">PREPARACIÓN</p>
+      <h1>Preparar solución de cloro</h1>
+      <p>Calculadora de dilución para soluciones de hipoclorito.</p>
+    </div>
+    <div class="two-cards">
+      <div class="form-card">
+        <h3>Datos de dilución</h3>
+        <div class="input-row">
+          <label>Concentración inicial<input id="dilution-initial" type="number" value="7.5" step="any"><small>%</small></label>
+          <label>Concentración deseada<input id="dilution-target" type="number" step="any" placeholder="%"></label>
+        </div>
+        <label>Volumen final deseado<input id="dilution-volume" type="number" step="any" placeholder="L"></label>
+        <button id="dilution-calc" class="squishy-primary-btn">Calcular preparación</button>
+      </div>
+      <div id="dilution-result" class="solution-result">
+        <span>⊕</span>
+        <h3>Solución final</h3>
+        <p>Ingrese las concentraciones y el volumen final.</p>
+      </div>
+    </div>
+    <div class="safety">
+      <b>⚠ Seguridad</b>
+      <span>Use protección personal, agregue el producto al agua conforme al procedimiento autorizado, mantenga el producto cerrado, ventilado y alejado de fuentes de calor. Nunca mezcle cloro con otros químicos.</span>
+    </div>
+  </section>
+
+  <section id="sistemas" class="view">
+    <div class="page-head">
+      <p class="eyebrow">REGISTRO</p>
+      <h1>Sistemas de agua</h1>
+      <p>Guarde los datos principales de los sistemas a su cargo.</p>
+    </div>
+    <div class="form-card wide">
+      <div class="input-grid">
+        <label>Nombre del sistema<input id="sys-name" placeholder="Ej. JASS San Miguel"></label>
+        <label>Centro poblado<input id="sys-town"></label>
+        <label>Distrito<input id="sys-district"></label>
+        <label>Provincia<input id="sys-province"></label>
+        <label>Departamento<input id="sys-department"></label>
+        <label>Tipo de tanque<input id="sys-tank" placeholder="Ej. Cilíndrico"></label>
+        <label>Volumen (L)<input id="sys-volume" type="number"></label>
+        <label>Responsable<input id="sys-person"></label>
+      </div>
+      <label>Observaciones<textarea id="sys-notes"></textarea></label>
+      <button id="save-system" class="squishy-primary-btn">Guardar sistema</button>
+    </div>
+    <div id="systems-list" class="records"></div>
+  </section>
+
+  <section id="historial" class="view">
+    <div class="page-head split">
+      <div>
+        <p class="eyebrow">VIGILANCIA</p>
+        <h1>Historial de mediciones</h1>
+        <p>Registre y consulte las verificaciones realizadas.</p>
+      </div>
+      <button id="export-csv" class="secondary">⇩ Exportar CSV</button>
+    </div>
+    <div class="history-filter">
+      <input id="history-search" placeholder="Filtrar por sistema o punto…">
+      <select id="history-state">
+        <option value="">Todos los estados</option>
+        <option>Dentro del rango</option>
+        <option>Requiere verificación</option>
+        <option>Fuera del rango</option>
+      </select>
+    </div>
+    <div id="history-list" class="history-list"></div>
+  </section>
+
+  <section id="normativa" class="view">
+    <div class="page-head">
+      <p class="eyebrow">REFERENCIAS TÉCNICAS</p>
+      <h1>Normativa y guías</h1>
+      <p>Parámetros configurables; confirme siempre los documentos oficiales vigentes.</p>
+    </div>
+    <div class="norm-card">
+      <span>▤</span>
+      <div>
+        <h3>D.S. N.° 031-2010-SA</h3>
+        <p>Reglamento de la Calidad del Agua para Consumo Humano. Referencia para vigilancia sanitaria y control de la calidad del agua.</p>
+        <small>Parámetros de referencia actualizados localmente: <b id="norm-date"></b></small>
+      </div>
+      <button class="secondary" id="update-norm">Actualizar fecha</button>
+    </div>
+    <div class="norm-grid">
+      <article><h3>Uso responsable</h3><p>CLORAGUA es una herramienta de apoyo técnico; no sustituye la vigilancia sanitaria, mediciones de campo ni las indicaciones de la autoridad competente.</p></article>
+      <article><h3>Ciclo recomendado</h3><p>Medir → Calcular → Dosificar → Esperar el tiempo de contacto → Medir nuevamente → Verificar → Registrar.</p></article>
+      <article><h3>Administración</h3><p>Los rangos operativos se pueden ajustar en la verificación para adecuarlos al protocolo oficial aplicable.</p></article>
+    </div>
+  </section>
+</main>
+
+<!-- Global Gotita 3D Interactive Companion Widget -->
+<aside id="gotita-companion" class="gotita-companion-widget" aria-label="Asistente interactivo Gotita 3D">
+  <button id="gotita-dock-toggle" class="gotita-dock-bubble" title="Abrir asistente Gotita 3D">
+    <span class="gotita-dock-avatar">💧</span>
+    <span class="gotita-dock-text">Gotita 3D</span>
+    <span class="gotita-dock-badge" id="gotita-dock-badge">Consejo</span>
+  </button>
+  
+  <div class="gotita-card-container" id="gotita-card">
+    <div class="gotita-card-header">
+      <div class="gotita-header-title">
+        <span class="gotita-header-icon">💧</span>
+        <div>
+          <strong>Gotita 3D · Asistente</strong>
+          <small id="gotita-current-page-tag">📍 Panel Principal</small>
+        </div>
+      </div>
+      <div class="gotita-header-actions">
+        <button id="companion-music-btn" class="gotita-icon-btn music-btn" title="Música alegre de fondo" aria-label="Música">🎵</button>
+        <button id="companion-mute-btn" class="gotita-icon-btn mute-btn" title="Silenciar / Activar sonido" aria-label="Silenciar sonido">🔊</button>
+        <button id="gotita-minimize-btn" class="gotita-icon-btn" title="Minimizar asistente" aria-label="Minimizar">✕</button>
+      </div>
+    </div>
+
+    <div class="gotita-companion-body">
+      <div class="gotita-companion-canvas-box" id="gotita-companion-canvas-box" title="¡Hazme clic o cosquillas!">
+        <canvas id="gotita-companion-canvas" width="240" height="200"></canvas>
+        <div class="gotita-companion-shadow"></div>
+        <div class="gotita-click-cue">✨ ¡Tócame para hacerme cosquillas! 🤭</div>
+      </div>
+
+      <div class="gotita-companion-speech" id="gotita-companion-speech">
+        ¡Hola! Estoy listo para darte consejos técnicos en cada página 💧
+      </div>
+
+      <div class="gotita-companion-controls">
+        <button class="gotita-mini-btn highlight-mini" id="companion-tickle-btn">🤭 Cosquillas</button>
+        <button class="gotita-mini-btn primary-mini" id="companion-tip-btn">💡 Consejo</button>
+        <button class="gotita-mini-btn" id="companion-jump-btn">⚡ Brincar</button>
+        <button class="gotita-mini-btn" id="companion-spin-btn">🌀 Girar</button>
+        <button class="gotita-mini-btn" id="companion-wave-btn">👋 Saludar</button>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<div id="toast"></div><script src="app.js"></script></body></html>
+
