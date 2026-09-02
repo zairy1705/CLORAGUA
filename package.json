@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "node server.js",
-    "build": "mkdir -p dist && cp -f index.html styles.css app.js metadata.json dist/ 2>/dev/null || echo 'Build ready'",
-    "lint": "node -c app.js server.js",
+    "build": "node build.js",
+    "lint": "node -c app.js server.js build.js",
     "start": "node server.js"
   },
   "dependencies": {
