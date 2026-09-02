@@ -2,16 +2,6 @@ const $ = s => document.querySelector(s);
 const $$ = s => document.querySelectorAll(s);
 const state = { volume: 0, capacity: 0, product: 'liquido', tank: 'vertical' };
 
-// Safely inject tank illustration if container exists
-try {
-  const volHead = $('#volumen .page-head');
-  if (volHead && !$('#volumen .tank-gallery')) {
-    volHead.insertAdjacentHTML('afterend', '<figure class="tank-gallery"><img src="assets/tipos-tanque-3d.png" alt="Ilustración 3D de tipos de reservorio de agua"><figcaption>Identifique visualmente el tipo de reservorio antes de ingresar sus dimensiones.</figcaption></figure>');
-  }
-} catch (e) {
-  console.warn('Tank gallery banner warning:', e);
-}
-
 const toast = m => {
   const t = $('#toast');
   if (!t) return;
@@ -63,6 +53,7 @@ function go(id) {
   closeSidebar();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 
+  if (id === 'inicio') renderDashboardIndicators();
   if (id === 'historial') renderHistory();
   if (id === 'sistemas') renderSystems();
   if (window.gotitaSetPage) window.gotitaSetPage(id);
@@ -274,15 +265,75 @@ const fields = {
     </div>`
 };
 
+const tankMeta = {
+  vertical: {
+    title: 'Tanque Cilíndrico Vertical (Rotoplas / Polietileno)',
+    subtitle: 'Diámetro, altura de pared y nivel efectivo del agua',
+    formula: 'V = π × r² × h_agua · (1 m³ = 1,000 Litros)'
+  },
+  rectangular: {
+    title: 'Reservorio Apoyado de Concreto / Cisterna',
+    subtitle: 'Largo, ancho, altura total y tirante de agua almacenada',
+    formula: 'V = Largo × Ancho × h_agua · (1 m³ = 1,000 Litros)'
+  },
+  cubic: {
+    title: 'Tanque Elevado / Reservorio Cúbico',
+    subtitle: 'Lado de la arista interior y nivel del agua',
+    formula: 'V = Lado² × h_agua · (1 m³ = 1,000 Litros)'
+  },
+  horizontal: {
+    title: 'Tanque Cilíndrico Horizontal',
+    subtitle: 'Diámetro, longitud y nivel del agua por segmento circular',
+    formula: 'V = [r² · acos((r-h)/r) - (r-h) · √(2rh - h²)] × Longitud'
+  },
+  direct: {
+    title: 'Ingreso Directo de Volumen Conocido',
+    subtitle: 'Aforo hidrométrico, plano hidráulico o medidor de flujo',
+    formula: 'V = Volumen directo declarado (m³ o Litros)'
+  }
+};
+
+function selectTankGeometry(type) {
+  const tankSelect = $('#tank-type');
+  if (tankSelect) tankSelect.value = type;
+  state.tank = type;
+
+  // Update geometry buttons active state
+  $$('.tank-geo-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tankType === type);
+  });
+
+  // Update titles and subtitles
+  const meta = tankMeta[type] || tankMeta.vertical;
+  const titleEl = $('#selected-tank-title');
+  if (titleEl) titleEl.textContent = meta.title;
+  const subEl = $('#selected-tank-subtitle');
+  if (subEl) subEl.textContent = meta.subtitle;
+  const formulaEl = $('#formula-text');
+  if (formulaEl) formulaEl.textContent = meta.formula;
+
+  // Render fields
+  const container = $('#tank-fields');
+  if (container) container.innerHTML = fields[type] || '';
+
+  // Update 3D visual class
+  const visual = $('#tank-visual');
+  if (visual) visual.className = `tank-visual ${type}`;
+}
+
 function tankFields() {
   const tankSelect = $('#tank-type');
   if (!tankSelect) return;
-  state.tank = tankSelect.value;
-  const container = $('#tank-fields');
-  if (container) container.innerHTML = fields[state.tank] || '';
-  const visual = $('#tank-visual');
-  if (visual) visual.className = `tank-visual ${state.tank}`;
+  selectTankGeometry(tankSelect.value);
 }
+
+// Bind geometry selector buttons
+$$('.tank-geo-btn').forEach(btn => {
+  btn.onclick = () => {
+    const tType = btn.dataset.tankType;
+    if (tType) selectTankGeometry(tType);
+  };
+});
 
 const tankTypeEl = $('#tank-type');
 if (tankTypeEl) {
@@ -347,11 +398,14 @@ if (calcVolBtn) {
     state.capacity = cap * (state.tank === 'direct' ? 1 : 1000);
     const pct = Math.min(100, Math.max(0, (state.volume / state.capacity) * 100));
 
-    const waterBar = $('.water');
+    const waterBar = $('#tank-water-fill') || $('.water');
     if (waterBar) waterBar.style.height = pct + '%';
     
+    const pctBadge = $('#volume-percent-badge');
+    if (pctBadge) pctBadge.textContent = `${pct.toFixed(0)}% LLENO`;
+
     const mainVol = $('#volume-main');
-    if (mainVol) mainVol.innerHTML = `${state.volume.toLocaleString('es-PE', { maximumFractionDigits: 1 })} <small>L</small>`;
+    if (mainVol) mainVol.innerHTML = `${state.volume.toLocaleString('es-PE', { maximumFractionDigits: 1 })} <small style="font-size: 18px; color: var(--on-surface-variant);">L</small>`;
     
     const m3Vol = $('#volume-m3');
     if (m3Vol) m3Vol.textContent = (state.volume / 1000).toLocaleString('es-PE', { maximumFractionDigits: 3 });
@@ -359,8 +413,17 @@ if (calcVolBtn) {
     const capVol = $('#volume-capacity');
     if (capVol) capVol.textContent = state.capacity.toLocaleString('es-PE', { maximumFractionDigits: 1 });
     
+    const bordeLibreEl = $('#volume-borde-libre');
+    if (bordeLibreEl) {
+      if (th > 0 && h > 0) {
+        bordeLibreEl.textContent = `${(th - h).toFixed(2)} m (${((1 - pct/100)*100).toFixed(0)}%)`;
+      } else {
+        bordeLibreEl.textContent = '—';
+      }
+    }
+
     const msgVol = $('#volume-message');
-    if (msgVol) msgVol.textContent = `Nivel de agua: ${pct.toFixed(0)}% de la capacidad total.`;
+    if (msgVol) msgVol.textContent = `Nivel actual: ${pct.toFixed(0)}% de la capacidad total del reservorio.`;
     
     const useVol = $('#use-volume');
     if (useVol) useVol.disabled = false;
@@ -417,22 +480,60 @@ if (verifyBtn) {
       box.innerHTML = `<span>${i}</span><h3>${t}</h3><p><b>${x.toFixed(2)} mg/L</b> · Rango: ${min}–${max} mg/L</p><p>${p}</p>`;
     }
 
+    const utmZone = $('#sample-utm-zone')?.value || '18S';
+    const utmEast = $('#sample-utm-east')?.value ? parseFloat($('#sample-utm-east').value) : null;
+    const utmNorth = $('#sample-utm-north')?.value ? parseFloat($('#sample-utm-north').value) : null;
+
     saveMeasurement({
       value: x,
       min,
       max,
       status: t,
       point: $('#measurement-point')?.value || 'Punto no especificado',
+      utmZone,
+      utmEast,
+      utmNorth,
       date: new Date().toLocaleString('es-PE')
     });
     renderLast();
-    toast('Verificación registrada en el historial.');
+    toast('Verificación registrada con éxito.');
 
     if (window.gotitaReact) {
       if (c === 'good') window.gotitaReact(`¡Excelente! Residual de ${x.toFixed(2)} mg/L dentro de norma. Agua 100% segura 🌟💧`);
       else if (c === 'warn') window.gotitaReact(`⚠️ Residual bajo (${x.toFixed(2)} mg/L). Se recomienda revisar dosificador o dosis.`);
       else window.gotitaReact(`🚫 Residual alto (${x.toFixed(2)} mg/L). Ajusta el dosificador para evitar olores y sabores.`);
     }
+  };
+}
+
+// Sample Clorimeter 1.25 mg/L Auto-load
+const loadSampleBtn = $('#load-sample-reading-btn');
+if (loadSampleBtn) {
+  loadSampleBtn.onclick = () => {
+    const resInput = $('#verified-residual');
+    if (resInput) {
+      resInput.value = '1.25';
+      resInput.focus();
+    }
+    const pointInput = $('#measurement-point');
+    if (pointInput && !pointInput.value) {
+      pointInput.value = 'Salida de Reservorio Principal R-01';
+    }
+    // Select range 0.8 - 1.2 or evaluate
+    if (verifyBtn) verifyBtn.click();
+    toast('Lectura de 1.25 mg/L cargada desde Clorímetro Digital.');
+    if (window.gotitaReact) {
+      window.gotitaReact('Lectura de 1.25 mg/L cargada. Evaluando conformidad según rango operativo... 🔬💧');
+    }
+  };
+}
+
+// Clorimeter Quote WhatsApp
+const quoteClorimetroBtn = $('#clorimetro-quote-wa-btn');
+if (quoteClorimetroBtn) {
+  quoteClorimetroBtn.onclick = () => {
+    const msg = encodeURIComponent('Hola CLORAGUA, solicito cotización e información técnica del CLORÍMETRO DIGITAL PORTÁTIL (Rango 0.00 - 5.00 mg/L, método DPD, compensación automática de temperatura).');
+    window.open(`https://wa.me/51920221581?text=${msg}`, '_blank');
   };
 }
 
@@ -500,7 +601,868 @@ function saveMeasurement(x) {
   const a = get('cloragua-measurements');
   a.unshift(x);
   put('cloragua-measurements', a);
+  renderDashboardIndicators();
 }
+
+// ==========================================
+// UTM (Universal Transverse Mercator) & WGS84
+// ==========================================
+function latLonToUtm(lat, lon) {
+  const a = 6378137.0; // WGS84 semi-major axis (meters)
+  const f = 1.0 / 298.257223563; // Flattening
+  const k0 = 0.9996; // Scale factor
+  const e = Math.sqrt(2 * f - f * f);
+  const ePrimeSq = (e * e) / (1 - e * e);
+
+  const latRad = (lat * Math.PI) / 180.0;
+  const lonRad = (lon * Math.PI) / 180.0;
+
+  const zone = Math.floor((lon + 180.0) / 6.0) + 1;
+  const lonOrigin = ((zone - 1) * 6 - 180 + 3); // Central meridian
+  const lonOriginRad = (lonOrigin * Math.PI) / 180.0;
+  const hemisphere = lat >= 0 ? 'N' : 'S';
+
+  const N = a / Math.sqrt(1 - e * e * Math.sin(latRad) * Math.sin(latRad));
+  const T = Math.tan(latRad) * Math.tan(latRad);
+  const C = ePrimeSq * Math.cos(latRad) * Math.cos(latRad);
+  const A = Math.cos(latRad) * (lonRad - lonOriginRad);
+
+  const M = a * ((1 - e * e / 4 - 3 * Math.pow(e, 4) / 64 - 5 * Math.pow(e, 6) / 256) * latRad
+    - (3 * e * e / 8 + 3 * Math.pow(e, 4) / 32 + 45 * Math.pow(e, 6) / 1024) * Math.sin(2 * latRad)
+    + (15 * Math.pow(e, 4) / 256 + 45 * Math.pow(e, 6) / 1024) * Math.sin(4 * latRad)
+    - (35 * Math.pow(e, 6) / 3072) * Math.sin(6 * latRad));
+
+  let utmEasting = k0 * N * (A + (1 - T + C) * Math.pow(A, 3) / 6.0 + (5 - 18 * T + T * T + 72 * C - 58 * ePrimeSq) * Math.pow(A, 5) / 120.0) + 500000.0;
+  let utmNorthing = k0 * (M + N * Math.tan(latRad) * (A * A / 2.0 + (5 - T + 9 * C + 4 * C * C) * Math.pow(A, 4) / 24.0 + (61 - 58 * T + T * T + 600 * C - 330 * ePrimeSq) * Math.pow(A, 6) / 720.0));
+
+  if (lat < 0) {
+    utmNorthing += 10000000.0; // False northing for southern hemisphere
+  }
+
+  return {
+    zone: `${zone}${hemisphere}`,
+    zoneNum: zone,
+    hemisphere,
+    easting: Math.round(utmEasting * 10) / 10,
+    northing: Math.round(utmNorthing * 10) / 10
+  };
+}
+
+function utmToLatLon(easting, northing, zoneStr) {
+  const zoneMatch = String(zoneStr || '18S').match(/^(\d+)\s*([A-Za-z]?)$/);
+  const zone = zoneMatch ? parseInt(zoneMatch[1], 10) : 18;
+  const isSouth = zoneMatch && zoneMatch[2] ? zoneMatch[2].toUpperCase() === 'S' : true;
+
+  const k0 = 0.9996;
+  const a = 6378137.0;
+  const f = 1.0 / 298.257223563;
+  const e = Math.sqrt(2 * f - f * f);
+  const e1 = (1 - Math.sqrt(1 - e * e)) / (1 + Math.sqrt(1 - e * e));
+
+  const x = easting - 500000.0;
+  let y = northing;
+  if (isSouth) y -= 10000000.0;
+
+  const M = y / k0;
+  const mu = M / (a * (1 - e * e / 4 - 3 * Math.pow(e, 4) / 64 - 5 * Math.pow(e, 6) / 256));
+
+  const phi1Rad = mu + (3 * e1 / 2 - 27 * Math.pow(e1, 3) / 32) * Math.sin(2 * mu)
+    + (21 * e1 * e1 / 16 - 55 * Math.pow(e1, 4) / 32) * Math.sin(4 * mu)
+    + (151 * Math.pow(e1, 3) / 96) * Math.sin(6 * mu);
+
+  const ePrimeSq = (e * e) / (1 - e * e);
+  const N1 = a / Math.sqrt(1 - e * e * Math.sin(phi1Rad) * Math.sin(phi1Rad));
+  const T1 = Math.tan(phi1Rad) * Math.tan(phi1Rad);
+  const C1 = ePrimeSq * Math.cos(phi1Rad) * Math.cos(phi1Rad);
+  const R1 = a * (1 - e * e) / Math.pow(1 - e * e * Math.sin(phi1Rad) * Math.sin(phi1Rad), 1.5);
+  const D = x / (N1 * k0);
+
+  let lat = phi1Rad - (N1 * Math.tan(phi1Rad) / R1) * (D * D / 2 - (5 + 3 * T1 + 10 * C1 - 4 * C1 * C1 - 9 * ePrimeSq) * Math.pow(D, 4) / 24 + (61 + 90 * T1 + 298 * C1 + 45 * T1 * T1 - 252 * ePrimeSq - 3 * C1 * C1) * Math.pow(D, 6) / 720);
+  lat = (lat * 180.0) / Math.PI;
+
+  let lon = (D - (1 + 2 * T1 + C1) * Math.pow(D, 3) / 6 + (5 - 2 * C1 + 28 * T1 - 3 * C1 * C1 + 8 * ePrimeSq + 24 * T1 * T1) * Math.pow(D, 5) / 120) / Math.cos(phi1Rad);
+  lon = ((zone - 1) * 6 - 180 + 3) + (lon * 180.0) / Math.PI;
+
+  return { lat, lon };
+}
+
+// ==========================================================================
+// GOOGLE MAPS PARSER, UTM CONVERTER & INTERACTIVE SATELLITE MAP PICKER
+// ==========================================================================
+
+// Parse Lat/Lon from any Google Maps text, link, DMS string or coordinate pair
+function parseCoordinatesFromText(rawText) {
+  if (!rawText || typeof rawText !== 'string') return null;
+  const text = rawText.trim();
+  if (!text) return null;
+
+  // 1. Check Google Maps URLs with @lat,lon (e.g. /@ -12.04637,-77.04279,17z)
+  const atMatch = text.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if (atMatch) {
+    return { lat: parseFloat(atMatch[1]), lon: parseFloat(atMatch[2]), source: 'Enlace de Google Maps' };
+  }
+
+  // 2. Check query params (q=, query=, ll=, daddr=, destination=, etc.)
+  const qMatch = text.match(/[?&](?:q|query|ll|daddr|saddr|destination)=(-?\d+\.\d+),(-?\d+\.\d+)/i);
+  if (qMatch) {
+    return { lat: parseFloat(qMatch[1]), lon: parseFloat(qMatch[2]), source: 'Parámetro Google Maps' };
+  }
+
+  // 3. Check geo: URI (geo:-12.04637,-77.04279)
+  const geoMatch = text.match(/geo:(-?\d+\.\d+),(-?\d+\.\d+)/i);
+  if (geoMatch) {
+    return { lat: parseFloat(geoMatch[1]), lon: parseFloat(geoMatch[2]), source: 'URI Geográfica' };
+  }
+
+  // 4. Check DMS format (Grados, Minutos, Segundos: ej. 13°09'31.6"S 74°13'23.6"W)
+  const dmsRegex = /(\d+)[°º\s]+(\d+)['\'\s]+([\d\.]+)["]?\s*([NSEWnsew])[\s,]+(\d+)[°º\s]+(\d+)['\'\s]+([\d\.]+)["]?\s*([NSEWnsew])/;
+  const dmsMatch = text.match(dmsRegex);
+  if (dmsMatch) {
+    let lat = parseInt(dmsMatch[1], 10) + parseInt(dmsMatch[2], 10) / 60 + parseFloat(dmsMatch[3]) / 3600;
+    if (dmsMatch[4].toUpperCase() === 'S') lat = -lat;
+    let lon = parseInt(dmsMatch[5], 10) + parseInt(dmsMatch[6], 10) / 60 + parseFloat(dmsMatch[7]) / 3600;
+    if (dmsMatch[8].toUpperCase() === 'W' || dmsMatch[8].toUpperCase() === 'O') lon = -lon;
+    return { lat, lon, source: 'Coordenadas DMS (Grados/Minutos/Segundos)' };
+  }
+
+  // 5. Check directional decimal: 12.04637 S, 77.04279 W
+  const dirMatch = text.match(/(\d+\.\d+)\s*([NSEWnsew])[,\s]+(\d+\.\d+)\s*([NSEWnsew])/);
+  if (dirMatch) {
+    let lat = parseFloat(dirMatch[1]);
+    if (dirMatch[2].toUpperCase() === 'S') lat = -lat;
+    let lon = parseFloat(dirMatch[3]);
+    if (dirMatch[4].toUpperCase() === 'W' || dirMatch[4].toUpperCase() === 'O') lon = -lon;
+    return { lat, lon, source: 'Decimal con Cardinal' };
+  }
+
+  // 6. Check standard decimal pair: -12.046374, -77.042793 or -12.046374 -77.042793
+  const pairMatch = text.match(/(-?\d{1,3}\.\d+)[,\s]+(-?\d{1,3}\.\d+)/);
+  if (pairMatch) {
+    const lat = parseFloat(pairMatch[1]);
+    const lon = parseFloat(pairMatch[2]);
+    if (lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) {
+      return { lat, lon, source: 'Coordenadas Decimales' };
+    }
+  }
+
+  return null;
+}
+
+// Interactive Map Picker Controller (Leaflet Map)
+let leafletMap = null;
+let leafletMarker = null;
+let currentMapTarget = 'system'; // 'system' or 'sample'
+let currentMapCoords = { lat: -13.15878, lon: -74.22321, utm: null };
+let currentMapTileLayer = null;
+
+const mapLayers = {
+  satellite: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+  streets: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  topo: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png'
+};
+
+function updateMapHud(lat, lon) {
+  const utm = latLonToUtm(lat, lon);
+  currentMapCoords = { lat, lon, utm };
+
+  const latLonEl = $('#hud-latlon-val');
+  const zoneEl = $('#hud-utmzone-val');
+  const eastEl = $('#hud-utmeast-val');
+  const northEl = $('#hud-utmnorth-val');
+  const gmapsLink = $('#hud-gmaps-external-link');
+
+  if (latLonEl) latLonEl.textContent = `${lat.toFixed(6)}°, ${lon.toFixed(6)}°`;
+  if (zoneEl) zoneEl.textContent = utm.zone;
+  if (eastEl) eastEl.textContent = `${utm.easting.toLocaleString('es-PE')} m`;
+  if (northEl) northEl.textContent = `${utm.northing.toLocaleString('es-PE')} m`;
+  if (gmapsLink) gmapsLink.href = `https://www.google.com/maps?q=${lat.toFixed(6)},${lon.toFixed(6)}`;
+}
+
+function initOrUpdateLeafletMap(initialLat, initialLon) {
+  const mapContainer = $('#interactive-leaflet-map');
+  if (!mapContainer || typeof L === 'undefined') return;
+
+  const lat = initialLat || currentMapCoords.lat || -13.15878;
+  const lon = initialLon || currentMapCoords.lon || -74.22321;
+
+  if (!leafletMap) {
+    leafletMap = L.map('interactive-leaflet-map', {
+      center: [lat, lon],
+      zoom: 14,
+      zoomControl: true
+    });
+
+    currentMapTileLayer = L.tileLayer(mapLayers.satellite, {
+      maxZoom: 19,
+      attribution: 'Esri Satellite & Imagery'
+    }).addTo(leafletMap);
+
+    // Create marker
+    const customIcon = L.divIcon({
+      className: 'custom-map-marker-pin',
+      html: '<div style="background: #00696b; color: #fff; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.35); border: 2.5px solid #fff; font-size: 18px;">📍</div>',
+      iconSize: [34, 34],
+      iconAnchor: [17, 34]
+    });
+
+    leafletMarker = L.marker([lat, lon], {
+      draggable: true,
+      icon: customIcon
+    }).addTo(leafletMap);
+
+    leafletMarker.on('dragend', (e) => {
+      const pos = e.target.getLatLng();
+      updateMapHud(pos.lat, pos.lng);
+    });
+
+    leafletMap.on('click', (e) => {
+      const { lat: clickLat, lng: clickLng } = e.latlng;
+      leafletMarker.setLatLng([clickLat, clickLng]);
+      updateMapHud(clickLat, clickLng);
+    });
+  } else {
+    leafletMap.setView([lat, lon], 14);
+    if (leafletMarker) leafletMarker.setLatLng([lat, lon]);
+  }
+
+  updateMapHud(lat, lon);
+  setTimeout(() => {
+    if (leafletMap) leafletMap.invalidateSize();
+  }, 250);
+}
+
+function openMapPicker(targetType, initialLat, initialLon) {
+  currentMapTarget = targetType || 'system';
+  const modal = $('#map-picker-modal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+  }
+
+  // If system has coordinates already in form, center on them
+  let startLat = initialLat;
+  let startLon = initialLon;
+
+  if (!startLat) {
+    const eastVal = currentMapTarget === 'system' ? $('#sys-utm-east')?.value : $('#sample-utm-east')?.value;
+    const northVal = currentMapTarget === 'system' ? $('#sys-utm-north')?.value : $('#sample-utm-north')?.value;
+    const zoneVal = currentMapTarget === 'system' ? $('#sys-utm-zone')?.value : $('#sample-utm-zone')?.value;
+
+    if (eastVal && northVal) {
+      try {
+        const converted = utmToLatLon(parseFloat(eastVal), parseFloat(northVal), zoneVal || '18S');
+        startLat = converted.lat;
+        startLon = converted.lon;
+      } catch (e) {}
+    }
+  }
+
+  initOrUpdateLeafletMap(startLat, startLon);
+}
+
+function closeMapPicker() {
+  const modal = $('#map-picker-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden', 'true');
+  }
+}
+
+// GPS / UTM Geolocation & Google Maps Extractor Setup
+function setupGeolocationHandlers() {
+  // 1. Google Maps Extractor for Systems
+  const sysExtractBtn = $('#sys-gmaps-extract-btn');
+  const sysGmapsInput = $('#sys-gmaps-input');
+  const sysPasteBtn = $('#sys-gmaps-paste-btn');
+  const sysMyLocBtn = $('#sys-gmaps-my-loc-btn');
+  const gmapsHelpToggle = $('#gmaps-help-toggle-btn');
+  const gmapsHelpPanel = $('#gmaps-help-panel');
+
+  if (gmapsHelpToggle && gmapsHelpPanel) {
+    gmapsHelpToggle.onclick = () => {
+      gmapsHelpPanel.classList.toggle('hidden');
+    };
+  }
+
+  const handleSysGmapsExtraction = () => {
+    const raw = sysGmapsInput?.value || '';
+    if (!raw.trim()) {
+      return toast('Pegue un enlace o coordenadas de Google Maps primero.');
+    }
+    const coords = parseCoordinatesFromText(raw);
+    if (!coords) {
+      return toast('No se reconocieron coordenadas válidas. Verifique el texto o enlace copiado.');
+    }
+
+    const utm = latLonToUtm(coords.lat, coords.lon);
+    if ($('#sys-utm-zone')) $('#sys-utm-zone').value = utm.zone;
+    if ($('#sys-utm-east')) $('#sys-utm-east').value = utm.easting;
+    if ($('#sys-utm-north')) $('#sys-utm-north').value = utm.northing;
+
+    const statusEl = $('#utm-geo-status');
+    if (statusEl) {
+      statusEl.innerHTML = `✅ Coordenadas extraídas desde Google Maps (${coords.source}): <b>Lat: ${coords.lat.toFixed(5)}°, Lon: ${coords.lon.toFixed(5)}°</b> → UTM Zona ${utm.zone}`;
+    }
+    toast(`¡Coordenadas UTM calculadas con éxito! Zona ${utm.zone} | E: ${utm.easting} | N: ${utm.northing}`);
+    if (window.gotitaReact) window.gotitaReact(`¡Listo! Coordenadas de Google Maps convertidas a UTM Zona ${utm.zone}: Este ${utm.easting}, Norte ${utm.northing} 🗺️📍✨`);
+  };
+
+  if (sysExtractBtn) sysExtractBtn.onclick = handleSysGmapsExtraction;
+  if (sysGmapsInput) {
+    sysGmapsInput.onkeydown = (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleSysGmapsExtraction();
+      }
+    };
+  }
+
+  if (sysMyLocBtn) {
+    sysMyLocBtn.onclick = () => {
+      if (!navigator.geolocation) return toast('Geolocalización no soportada en su navegador.');
+      sysMyLocBtn.disabled = true;
+      sysMyLocBtn.innerHTML = '<span class="material-symbols-outlined spin" style="font-size: 16px;">sync</span> Ubicando...';
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          sysMyLocBtn.disabled = false;
+          sysMyLocBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size: 16px; color: #ea4335;">my_location</span> Mi Ubicación';
+          const { latitude, longitude } = pos.coords;
+          if (sysGmapsInput) sysGmapsInput.value = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+          handleSysGmapsExtraction();
+        },
+        (err) => {
+          sysMyLocBtn.disabled = false;
+          sysMyLocBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size: 16px; color: #ea4335;">my_location</span> Mi Ubicación';
+          toast('No se pudo obtener la ubicación GPS: ' + (err.message || 'Permiso denegado'));
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    };
+  }
+
+  if (sysPasteBtn) {
+    sysPasteBtn.onclick = async () => {
+      try {
+        if (navigator.clipboard && navigator.clipboard.readText) {
+          const text = await navigator.clipboard.readText();
+          if (text && sysGmapsInput) {
+            sysGmapsInput.value = text;
+            handleSysGmapsExtraction();
+            return;
+          }
+        }
+      } catch (err) {}
+      const manual = prompt('Pegue aquí el enlace o coordenadas de Google Maps:');
+      if (manual && sysGmapsInput) {
+        sysGmapsInput.value = manual;
+        handleSysGmapsExtraction();
+      }
+    };
+  }
+
+  // 2. Google Maps Extractor for Sample Verification
+  const sampleExtractBtn = $('#sample-gmaps-extract-btn');
+  const sampleGmapsInput = $('#sample-gmaps-input');
+  if (sampleExtractBtn && sampleGmapsInput) {
+    sampleExtractBtn.onclick = () => {
+      const raw = sampleGmapsInput.value || '';
+      if (!raw.trim()) return toast('Pegue un enlace o coordenadas de Google Maps.');
+      const coords = parseCoordinatesFromText(raw);
+      if (!coords) return toast('Formato de coordenadas no reconocido.');
+
+      const utm = latLonToUtm(coords.lat, coords.lon);
+      if ($('#sample-utm-zone')) $('#sample-utm-zone').value = utm.zone;
+      if ($('#sample-utm-east')) $('#sample-utm-east').value = utm.easting;
+      if ($('#sample-utm-north')) $('#sample-utm-north').value = utm.northing;
+      toast(`UTM fijadas: Zona ${utm.zone} | E: ${utm.easting} | N: ${utm.northing}`);
+    };
+  }
+
+  // 3. Open Map Picker Buttons
+  const openSysMapBtn = $('#open-map-picker-btn');
+  if (openSysMapBtn) openSysMapBtn.onclick = () => openMapPicker('system');
+
+  const openSampleMapBtn = $('#open-sample-map-btn');
+  if (openSampleMapBtn) openSampleMapBtn.onclick = () => openMapPicker('sample');
+
+  // ==========================================================================
+  // 3.1 1-CLIC GOOGLE MAPS LAUNCHER & ASSISTANT MODAL
+  // ==========================================================================
+  let currentAssistantTarget = 'system';
+  let assistantCalculatedUtm = null;
+
+  function getGmapsSearchUrl(target) {
+    if (target === 'system') {
+      const town = ($('#sys-town')?.value || '').trim();
+      const district = ($('#sys-district')?.value || '').trim();
+      const province = ($('#sys-province')?.value || '').trim();
+      const dept = ($('#sys-department')?.value || '').trim();
+      const name = ($('#sys-name')?.value || '').trim();
+
+      const queryParts = [town, district, province, dept].filter(Boolean);
+      if (queryParts.length > 0) {
+        return {
+          url: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(queryParts.join(', ') + ', Peru')}`,
+          label: `Abrir Google Maps en ${queryParts.slice(0, 2).join(', ')} ↗`
+        };
+      }
+      if (name) {
+        return {
+          url: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name + ', Peru')}`,
+          label: `Buscar "${name}" en Google Maps ↗`
+        };
+      }
+    } else {
+      const point = ($('#measurement-point')?.value || '').trim();
+      if (point) {
+        return {
+          url: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(point + ', Peru')}`,
+          label: `Buscar "${point}" en Google Maps ↗`
+        };
+      }
+    }
+
+    return {
+      url: 'https://www.google.com/maps/@-9.189967,-75.015152,6z',
+      label: 'Abrir Google Maps Oficial (Perú) ↗'
+    };
+  }
+
+  function openGmapsAssistant(target) {
+    currentAssistantTarget = target || 'system';
+    assistantCalculatedUtm = null;
+
+    const modal = $('#gmaps-assistant-modal');
+    const { url, label } = getGmapsSearchUrl(currentAssistantTarget);
+
+    const btnText = $('#assistant-gmaps-btn-text');
+    if (btnText) btnText.textContent = label;
+
+    const input = $('#assistant-input-gmaps');
+    if (input) input.value = '';
+
+    const resBox = $('#assistant-utm-result-box');
+    if (resBox) resBox.classList.add('hidden');
+
+    const applyBtn = $('#assistant-apply-btn');
+    if (applyBtn) applyBtn.disabled = true;
+
+    if (modal) {
+      modal.classList.remove('hidden');
+      modal.setAttribute('aria-hidden', 'false');
+    }
+
+    // Launch Google Maps in new tab
+    try {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (e) {}
+
+    toast('Google Maps abierto en nueva pestaña. Copia las coordenadas de tu reservorio.');
+  }
+
+  function closeGmapsAssistant() {
+    const modal = $('#gmaps-assistant-modal');
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  const launchSysGmapsBtn = $('#launch-gmaps-direct-btn');
+  if (launchSysGmapsBtn) {
+    launchSysGmapsBtn.onclick = () => openGmapsAssistant('system');
+  }
+
+  const launchSampleGmapsBtn = $('#launch-gmaps-sample-btn');
+  if (launchSampleGmapsBtn) {
+    launchSampleGmapsBtn.onclick = () => openGmapsAssistant('sample');
+  }
+
+  // Launch Google Maps with Current GPS Position
+  const assistantLaunchGpsBtn = $('#assistant-launch-gps-btn');
+  if (assistantLaunchGpsBtn) {
+    assistantLaunchGpsBtn.onclick = () => {
+      if (!navigator.geolocation) return toast('Geolocalización no soportada en este navegador.');
+      assistantLaunchGpsBtn.disabled = true;
+      assistantLaunchGpsBtn.innerHTML = '<span class="material-symbols-outlined spin" style="font-size: 20px;">sync</span> <span><b>Detectando GPS...</b></span>';
+
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          assistantLaunchGpsBtn.disabled = false;
+          assistantLaunchGpsBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size: 20px;">my_location</span> <span><b>1. Abrir en Mi Ubicación Actual</b></span>';
+          const { latitude, longitude } = pos.coords;
+          const gmapsUrl = `https://www.google.com/maps?q=${latitude.toFixed(6)},${longitude.toFixed(6)}&z=18`;
+
+          // Open Google Maps in new tab centered on user
+          window.open(gmapsUrl, '_blank', 'noopener,noreferrer');
+
+          // Auto-fill assistant input and calculate UTM
+          const input = $('#assistant-input-gmaps');
+          if (input) input.value = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+          handleAssistantTransform();
+
+          toast(`Google Maps abierto en tu ubicación actual (${latitude.toFixed(5)}°, ${longitude.toFixed(5)}°). ¡Coordenadas UTM calculadas!`);
+          if (window.gotitaReact) window.gotitaReact(`¡Ubicación actual detectada y abierta en Google Maps! Coordenadas transformadas a UTM WGS84 🛰️📍🎯`);
+        },
+        (err) => {
+          assistantLaunchGpsBtn.disabled = false;
+          assistantLaunchGpsBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size: 20px;">my_location</span> <span><b>1. Abrir en Mi Ubicación Actual</b></span>';
+          toast('No se pudo obtener el GPS: ' + (err.message || 'Permiso denegado'));
+          // Fallback: open default maps
+          window.open('https://www.google.com/maps/@-9.189967,-75.015152,6z', '_blank', 'noopener,noreferrer');
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    };
+  }
+
+  const assistantLaunchBtn = $('#assistant-launch-gmaps-link');
+  if (assistantLaunchBtn) {
+    assistantLaunchBtn.onclick = () => {
+      const { url } = getGmapsSearchUrl(currentAssistantTarget);
+      window.open(url, '_blank', 'noopener,noreferrer');
+      toast('Abriendo Google Maps...');
+    };
+  }
+
+  const assistantCloseX = $('#gmaps-assistant-close-x');
+  const assistantCancel = $('#assistant-cancel-btn');
+  if (assistantCloseX) assistantCloseX.onclick = closeGmapsAssistant;
+  if (assistantCancel) assistantCancel.onclick = closeGmapsAssistant;
+
+  const handleAssistantTransform = () => {
+    const raw = ($('#assistant-input-gmaps')?.value || '').trim();
+    if (!raw) return toast('Pegue un enlace o coordenadas de Google Maps primero.');
+
+    const coords = parseCoordinatesFromText(raw);
+    if (!coords) {
+      return toast('Formato de coordenadas no reconocido. Copie los números (ej. -13.1587, -74.2239) o el enlace de Google Maps.');
+    }
+
+    const utm = latLonToUtm(coords.lat, coords.lon);
+    assistantCalculatedUtm = { coords, utm };
+
+    if ($('#assistant-latlon-txt')) $('#assistant-latlon-txt').textContent = `${coords.lat.toFixed(5)}°, ${coords.lon.toFixed(5)}°`;
+    if ($('#assistant-zone-txt')) $('#assistant-zone-txt').textContent = utm.zone;
+    if ($('#assistant-east-txt')) $('#assistant-east-txt').textContent = `${utm.easting.toLocaleString('es-PE')} m`;
+    if ($('#assistant-north-txt')) $('#assistant-north-txt').textContent = `${utm.northing.toLocaleString('es-PE')} m`;
+    if ($('#assistant-source-tag')) $('#assistant-source-tag').textContent = coords.source;
+
+    const resBox = $('#assistant-utm-result-box');
+    if (resBox) resBox.classList.remove('hidden');
+
+    const applyBtn = $('#assistant-apply-btn');
+    if (applyBtn) applyBtn.disabled = false;
+
+    toast(`¡Coordenadas calculadas! Zona ${utm.zone} | E: ${utm.easting} | N: ${utm.northing}`);
+  };
+
+  const assistantConvertBtn = $('#assistant-convert-btn');
+  if (assistantConvertBtn) assistantConvertBtn.onclick = handleAssistantTransform;
+
+  const assistantInput = $('#assistant-input-gmaps');
+  if (assistantInput) {
+    assistantInput.onkeydown = (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleAssistantTransform();
+      }
+    };
+  }
+
+  const assistantPasteBtn = $('#assistant-paste-btn');
+  if (assistantPasteBtn) {
+    assistantPasteBtn.onclick = async () => {
+      try {
+        if (navigator.clipboard && navigator.clipboard.readText) {
+          const text = await navigator.clipboard.readText();
+          if (text && assistantInput) {
+            assistantInput.value = text;
+            handleAssistantTransform();
+            return;
+          }
+        }
+      } catch (e) {}
+      const manual = prompt('Pegue aquí el enlace o coordenadas copiadas de Google Maps:');
+      if (manual && assistantInput) {
+        assistantInput.value = manual;
+        handleAssistantTransform();
+      }
+    };
+  }
+
+  const assistantApplyBtn = $('#assistant-apply-btn');
+  if (assistantApplyBtn) {
+    assistantApplyBtn.onclick = () => {
+      if (!assistantCalculatedUtm) return;
+      const { coords, utm } = assistantCalculatedUtm;
+
+      if (currentAssistantTarget === 'system') {
+        if ($('#sys-utm-zone')) $('#sys-utm-zone').value = utm.zone;
+        if ($('#sys-utm-east')) $('#sys-utm-east').value = utm.easting;
+        if ($('#sys-utm-north')) $('#sys-utm-north').value = utm.northing;
+        const statusEl = $('#utm-geo-status');
+        if (statusEl) {
+          statusEl.innerHTML = `✅ Coordenadas extraídas desde Google Maps: <b>Lat: ${coords.lat.toFixed(5)}°, Lon: ${coords.lon.toFixed(5)}°</b> → UTM Zona ${utm.zone}`;
+        }
+      } else {
+        if ($('#sample-utm-zone')) $('#sample-utm-zone').value = utm.zone;
+        if ($('#sample-utm-east')) $('#sample-utm-east').value = utm.easting;
+        if ($('#sample-utm-north')) $('#sample-utm-north').value = utm.northing;
+      }
+
+      closeGmapsAssistant();
+      toast(`Coordenadas UTM aplicadas: Zona ${utm.zone} | E: ${utm.easting} | N: ${utm.northing}`);
+      if (window.gotitaReact) window.gotitaReact(`¡Coordenadas de Google Maps transformadas y aplicadas a UTM con éxito! 🌐📍🎯`);
+    };
+  }
+
+  // Auto-focus helper: When user returns from Google Maps tab
+  window.addEventListener('focus', async () => {
+    const modal = $('#gmaps-assistant-modal');
+    if (modal && !modal.classList.contains('hidden') && assistantInput && !assistantInput.value) {
+      try {
+        if (navigator.clipboard && navigator.clipboard.readText) {
+          const text = await navigator.clipboard.readText();
+          if (text && parseCoordinatesFromText(text)) {
+            assistantInput.value = text;
+            handleAssistantTransform();
+          }
+        }
+      } catch (e) {}
+    }
+  });
+
+  // Modal Close & Apply Handlers
+  const modalCloseX = $('#map-modal-close-x');
+  const modalCancel = $('#map-modal-cancel-btn');
+  const modalBackdrop = $('#map-picker-modal');
+  const modalApply = $('#map-modal-apply-btn');
+
+  if (modalCloseX) modalCloseX.onclick = closeMapPicker;
+  if (modalCancel) modalCancel.onclick = closeMapPicker;
+  if (modalBackdrop) {
+    modalBackdrop.onclick = (e) => {
+      if (e.target === modalBackdrop) closeMapPicker();
+    };
+  }
+
+  if (modalApply) {
+    modalApply.onclick = () => {
+      const { lat, lon, utm } = currentMapCoords;
+      if (!utm) return closeMapPicker();
+
+      if (currentMapTarget === 'system') {
+        if ($('#sys-utm-zone')) $('#sys-utm-zone').value = utm.zone;
+        if ($('#sys-utm-east')) $('#sys-utm-east').value = utm.easting;
+        if ($('#sys-utm-north')) $('#sys-utm-north').value = utm.northing;
+        const statusEl = $('#utm-geo-status');
+        if (statusEl) {
+          statusEl.innerHTML = `✅ Coordenadas seleccionadas en mapa: <b>Lat: ${lat.toFixed(5)}°, Lon: ${lon.toFixed(5)}°</b> → UTM Zona ${utm.zone}`;
+        }
+      } else {
+        if ($('#sample-utm-zone')) $('#sample-utm-zone').value = utm.zone;
+        if ($('#sample-utm-east')) $('#sample-utm-east').value = utm.easting;
+        if ($('#sample-utm-north')) $('#sample-utm-north').value = utm.northing;
+      }
+
+      closeMapPicker();
+      toast(`Coordenadas UTM aplicadas: Zona ${utm.zone} | E: ${utm.easting} | N: ${utm.northing}`);
+      if (window.gotitaReact) window.gotitaReact(`¡Coordenadas del mapa satelital aplicadas con éxito al formulario! 🛰️📍🎯`);
+    };
+  }
+
+  // Layer buttons inside map modal
+  const layerSat = $('#map-layer-satellite');
+  const layerStreets = $('#map-layer-streets');
+  const layerTopo = $('#map-layer-topo');
+  const layerBtns = [layerSat, layerStreets, layerTopo].filter(Boolean);
+
+  const switchLayer = (url, activeBtn) => {
+    if (!leafletMap) return;
+    if (currentMapTileLayer) leafletMap.removeLayer(currentMapTileLayer);
+    currentMapTileLayer = L.tileLayer(url, { maxZoom: 19 }).addTo(leafletMap);
+    layerBtns.forEach(b => b.classList.remove('active'));
+    activeBtn.classList.add('active');
+  };
+
+  if (layerSat) layerSat.onclick = () => switchLayer(mapLayers.satellite, layerSat);
+  if (layerStreets) layerStreets.onclick = () => switchLayer(mapLayers.streets, layerStreets);
+  if (layerTopo) layerTopo.onclick = () => switchLayer(mapLayers.topo, layerTopo);
+
+  // Search in Map via Nominatim
+  const searchInput = $('#map-search-input');
+  const searchBtn = $('#map-search-btn');
+
+  const performMapSearch = async () => {
+    const q = (searchInput?.value || '').trim();
+    if (!q) return toast('Escriba el nombre de una ciudad, distrito o lugar.');
+    searchBtn.disabled = true;
+    searchBtn.textContent = 'Buscando...';
+
+    try {
+      const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q + ', Peru')}&limit=1`);
+      const data = await resp.json();
+      searchBtn.disabled = false;
+      searchBtn.textContent = 'Buscar';
+
+      if (data && data.length > 0) {
+        const result = data[0];
+        const lat = parseFloat(result.lat);
+        const lon = parseFloat(result.lon);
+        if (leafletMap) {
+          leafletMap.setView([lat, lon], 15);
+          if (leafletMarker) leafletMarker.setLatLng([lat, lon]);
+          updateMapHud(lat, lon);
+          toast(`Lugar encontrado: ${result.display_name.split(',')[0]}`);
+        }
+      } else {
+        toast('No se encontró el lugar. Intente con el nombre del distrito o provincia.');
+      }
+    } catch (e) {
+      searchBtn.disabled = false;
+      searchBtn.textContent = 'Buscar';
+      toast('Error al buscar en el mapa. Verifique su conexión.');
+    }
+  };
+
+  if (searchBtn) searchBtn.onclick = performMapSearch;
+  if (searchInput) {
+    searchInput.onkeydown = (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        performMapSearch();
+      }
+    };
+  }
+
+  // Quick Map Center Tags & Geolocation
+  const handleMapLocateMe = (triggerBtn) => {
+    if (!navigator.geolocation) return toast('Geolocalización no soportada.');
+    if (triggerBtn) {
+      triggerBtn.disabled = true;
+      triggerBtn.innerHTML = '<span class="material-symbols-outlined spin" style="font-size: 16px;">sync</span> Localizando GPS...';
+    }
+    toast('Detectando ubicación GPS para el mapa satelital...');
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        if (triggerBtn) {
+          triggerBtn.disabled = false;
+          triggerBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size: 18px; color: #ea4335;">my_location</span> <strong>Mi Ubicación GPS</strong>';
+        }
+        const { latitude, longitude } = pos.coords;
+        if (leafletMap) {
+          leafletMap.setView([latitude, longitude], 17);
+          if (leafletMarker) leafletMarker.setLatLng([latitude, longitude]);
+          updateMapHud(latitude, longitude);
+          toast(`¡Mapa centrado en tu ubicación GPS actual! (${latitude.toFixed(5)}°, ${longitude.toFixed(5)}°)`);
+        }
+      },
+      (err) => {
+        if (triggerBtn) {
+          triggerBtn.disabled = false;
+          triggerBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size: 18px; color: #ea4335;">my_location</span> <strong>Mi Ubicación GPS</strong>';
+        }
+        toast('No se pudo obtener el GPS: ' + (err.message || 'Permiso denegado'));
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  };
+
+  const mapLocateMeBtn = $('#map-locate-me-btn');
+  if (mapLocateMeBtn) mapLocateMeBtn.onclick = () => handleMapLocateMe(mapLocateMeBtn);
+
+  const mapTagMyLoc = $('#map-tag-my-loc');
+  if (mapTagMyLoc) mapTagMyLoc.onclick = () => handleMapLocateMe(null);
+
+  // Quick Map Center Tags
+  $$('.map-tag-btn').forEach(btn => {
+    if (btn.id === 'map-tag-my-loc') return;
+    btn.onclick = () => {
+      const lat = parseFloat(btn.dataset.lat);
+      const lon = parseFloat(btn.dataset.lon);
+      const zoom = parseInt(btn.dataset.zoom, 10) || 14;
+      if (leafletMap) {
+        leafletMap.setView([lat, lon], zoom);
+        if (leafletMarker) leafletMarker.setLatLng([lat, lon]);
+        updateMapHud(lat, lon);
+      }
+    };
+  });
+
+  // 4. GPS Button for Systems
+  const geoSysBtn = $('#geo-btn-system');
+  if (geoSysBtn) {
+    geoSysBtn.onclick = () => {
+      if (!navigator.geolocation) {
+        return toast('La geolocalización no es compatible con este dispositivo.');
+      }
+      geoSysBtn.disabled = true;
+      geoSysBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size: 16px; animation: spin 1s infinite linear;">sync</span> Obteniendo GPS...';
+      const statusEl = $('#utm-geo-status');
+      if (statusEl) statusEl.textContent = 'Buscando satélites GPS para fijar coordenadas de alta precisión...';
+
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          geoSysBtn.disabled = false;
+          geoSysBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size: 16px;">my_location</span> GPS Actual';
+          const { latitude, longitude, altitude, accuracy } = pos.coords;
+          const utm = latLonToUtm(latitude, longitude);
+
+          if ($('#sys-utm-zone')) $('#sys-utm-zone').value = utm.zone;
+          if ($('#sys-utm-east')) $('#sys-utm-east').value = utm.easting;
+          if ($('#sys-utm-north')) $('#sys-utm-north').value = utm.northing;
+          if ($('#sys-utm-alt') && altitude) $('#sys-utm-alt').value = Math.round(altitude);
+
+          if (statusEl) {
+            statusEl.innerHTML = `✅ Coordenadas capturadas con éxito (Precisión GPS: ±${accuracy.toFixed(1)} m) · <b>Lat: ${latitude.toFixed(5)}°, Lon: ${longitude.toFixed(5)}°</b>`;
+          }
+          toast(`Coordenadas UTM fijadas: Zona ${utm.zone} | E: ${utm.easting} | N: ${utm.northing}`);
+          if (window.gotitaReact) window.gotitaReact(`¡Ubicación GPS capturada! Coordenadas UTM Zona ${utm.zone}: Este ${utm.easting}, Norte ${utm.northing} 📍🛰️`);
+        },
+        (err) => {
+          geoSysBtn.disabled = false;
+          geoSysBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size: 16px;">my_location</span> GPS Actual';
+          if (statusEl) statusEl.textContent = 'No se pudo acceder al sensor GPS. Puede ingresar las coordenadas UTM o pegarlas desde Google Maps.';
+          toast('No se pudo obtener el GPS: ' + (err.message || 'Permiso denegado'));
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    };
+  }
+
+  // 5. GPS Button for Sample
+  const geoSampleBtn = $('#geo-btn-sample');
+  if (geoSampleBtn) {
+    geoSampleBtn.onclick = () => {
+      if (!navigator.geolocation) return toast('Geolocalización no soportada.');
+      geoSampleBtn.disabled = true;
+      geoSampleBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size: 14px; animation: spin 1s infinite linear;">sync</span>...';
+
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          geoSampleBtn.disabled = false;
+          geoSampleBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size: 14px;">my_location</span> GPS actual';
+          const { latitude, longitude } = pos.coords;
+          const utm = latLonToUtm(latitude, longitude);
+
+          if ($('#sample-utm-zone')) $('#sample-utm-zone').value = utm.zone;
+          if ($('#sample-utm-east')) $('#sample-utm-east').value = utm.easting;
+          if ($('#sample-utm-north')) $('#sample-utm-north').value = utm.northing;
+          toast(`UTM de muestreo: E ${utm.easting}, N ${utm.northing}`);
+        },
+        (err) => {
+          geoSampleBtn.disabled = false;
+          geoSampleBtn.innerHTML = '<span class="material-symbols-outlined" style="font-size: 14px;">my_location</span> GPS actual';
+          toast('GPS no disponible.');
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    };
+  }
+}
+setupGeolocationHandlers();
 
 function renderHistory() {
   const searchInput = $('#history-search');
@@ -511,22 +1473,29 @@ function renderHistory() {
   const q = (searchInput?.value || '').toLowerCase();
   const f = stateSelect?.value || '';
   const all = get('cloragua-measurements');
-  const filtered = all.filter(x => (!f || x.status === f) && (`${x.point} ${x.status}`).toLowerCase().includes(q));
+  const filtered = all.filter(x => (!f || x.status === f) && (`${x.point} ${x.status} ${x.utmEast || ''} ${x.utmNorth || ''}`).toLowerCase().includes(q));
 
   if (!filtered.length) {
     list.innerHTML = `<div class="empty-state" style="padding: 24px; text-align: center; color: var(--on-surface-variant);">No hay mediciones que coincidan con los filtros.</div>`;
     return;
   }
 
-  list.innerHTML = filtered.map(x => `
-    <article class="history-item">
-      <div>
-        <h3>${x.value.toFixed(2)} mg/L · ${x.point}</h3>
-        <p>${x.date} · Rango: ${x.min}–${x.max} mg/L</p>
-      </div>
-      <span class="pill ${x.status === 'Dentro del rango' ? 'good' : x.status === 'Fuera del rango' ? 'bad' : 'warn'}">${x.status}</span>
-    </article>
-  `).join('');
+  list.innerHTML = filtered.map(x => {
+    let utmHtml = '';
+    if (x.utmEast && x.utmNorth) {
+      utmHtml = `<div class="utm-pill-badge" style="margin-top: 4px; font-size: 11px;"><span class="material-symbols-outlined" style="font-size: 13px;">pin_drop</span> UTM ${x.utmZone || '18S'}: E ${Number(x.utmEast).toLocaleString('es-PE')} · N ${Number(x.utmNorth).toLocaleString('es-PE')}</div>`;
+    }
+    return `
+      <article class="history-item">
+        <div>
+          <h3>${x.value.toFixed(2)} mg/L · ${x.point}</h3>
+          <p>${x.date} · Rango: ${x.min}–${x.max} mg/L</p>
+          ${utmHtml}
+        </div>
+        <span class="pill ${x.status === 'Dentro del rango' ? 'good' : x.status === 'Fuera del rango' ? 'bad' : 'warn'}">${x.status}</span>
+      </article>
+    `;
+  }).join('');
 }
 
 const historySearch = $('#history-search');
@@ -534,13 +1503,118 @@ if (historySearch) historySearch.oninput = renderHistory;
 const historyState = $('#history-state');
 if (historyState) historyState.onchange = renderHistory;
 
-function renderLast() {
-  const x = get('cloragua-measurements')[0];
-  const box = $('#last-measurement');
-  if (!box) return;
-  if (x) {
-    box.innerHTML = `<b>${x.value.toFixed(2)} mg/L</b> · ${x.point}<br><small>${x.date} · ${x.status}</small>`;
+function renderDashboardIndicators() {
+  // 1. Live Time Update
+  const clockEl = $('#dashboard-live-clock');
+  if (clockEl) {
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const dateStr = now.toLocaleDateString('es-PE', { weekday: 'short', day: 'numeric', month: 'short' });
+    clockEl.innerHTML = `<span class="material-symbols-outlined" style="font-size: 15px; color: var(--secondary);">schedule</span> ${dateStr}, ${timeStr} • Telemetría activa`;
   }
+
+  // 2. Measurements & Compliance Indicators
+  const measurements = get('cloragua-measurements');
+  const compVal = $('#kpi-compliance-val');
+  const compBadge = $('#kpi-compliance-badge');
+  const compSub = $('#kpi-compliance-sub');
+  const resVal = $('#kpi-residual-val');
+  const resBadge = $('#kpi-residual-badge');
+  const resSub = $('#kpi-residual-sub');
+  const tbody = $('#dashboard-recent-tbody');
+  const advTitle = $('#advisory-title');
+  const advText = $('#advisory-text');
+
+  if (measurements && measurements.length > 0) {
+    const total = measurements.length;
+    const good = measurements.filter(m => m.status === 'Dentro del rango' || (m.value >= 0.5 && m.value <= 1.0)).length;
+    const pct = ((good / total) * 100).toFixed(1);
+    
+    if (compVal) compVal.textContent = pct;
+    if (compBadge) {
+      compBadge.textContent = pct >= 90 ? 'EXCELENTE' : pct >= 75 ? 'ACEPTABLE' : 'ALERTA';
+      compBadge.className = `kpi-badge ${pct >= 90 ? 'badge-good' : pct >= 75 ? 'badge-info' : 'badge-accent'}`;
+    }
+    if (compSub) compSub.textContent = `${good} de ${total} mediciones en rango normativo`;
+
+    const latest = measurements[0];
+    if (resVal) resVal.textContent = latest.value.toFixed(2);
+    if (resBadge) {
+      const isGood = latest.value >= (latest.min || 0.5) && latest.value <= (latest.max || 1.0);
+      resBadge.textContent = isGood ? 'ÓPTIMO' : latest.value < 0.5 ? 'BAJO' : 'ALTO';
+      resBadge.className = `kpi-badge ${isGood ? 'badge-good' : 'badge-accent'}`;
+    }
+    if (resSub) resSub.textContent = `${latest.point || 'Punto de red'} (${latest.date.split(',')[0] || 'Reciente'})`;
+
+    // Render Recent 3 Measurements Table
+    if (tbody) {
+      const recent3 = measurements.slice(0, 3);
+      tbody.innerHTML = recent3.map(m => {
+        const isGood = m.status === 'Dentro del rango' || (m.value >= 0.5 && m.value <= 1.0);
+        return `
+          <tr>
+            <td>${m.date}</td>
+            <td>${m.point || 'Red de distribución'}</td>
+            <td><strong>${m.value.toFixed(2)} mg/L</strong></td>
+            <td><span class="pill ${isGood ? 'good' : m.value < 0.5 ? 'warn' : 'bad'}">${m.status || (isGood ? 'Dentro del rango' : 'Fuera del rango')}</span></td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // Dynamic Smart Advisory Diagnostic
+    if (advTitle && advText) {
+      if (latest.value < 0.5) {
+        advTitle.textContent = 'Alerta Sanitaria: Residual Bajo';
+        advText.textContent = `La última medición (${latest.value.toFixed(2)} mg/L en ${latest.point}) está por debajo de la norma (0.50 mg/L). Se sugiere calibrar el dosificador o incrementar +15% el caudal de solución.`;
+      } else if (latest.value > 1.0) {
+        advTitle.textContent = 'Atención: Residual Alto';
+        advText.textContent = `La medición (${latest.value.toFixed(2)} mg/L) supera el rango superior (1.00 mg/L). Reduzca la apertura de la válvula dosificadora para evitar sabor a cloro en grifo.`;
+      } else {
+        advTitle.textContent = 'Diagnóstico: Desinfección Óptima';
+        advText.textContent = `Residual de ${latest.value.toFixed(2)} mg/L en ${latest.point}. La barrera bactericida está 100% activa contra coliformes y patógenos en toda la red de distribución.`;
+      }
+    }
+  }
+
+  // 3. Water Systems & Volume Stats
+  const systems = get('cloragua-systems');
+  const sysVal = $('#kpi-systems-val');
+  const sysSub = $('#kpi-systems-sub');
+  const volVal = $('#kpi-volume-val');
+  const volSub = $('#kpi-volume-sub');
+
+  if (sysVal) {
+    const count = systems.length || 4;
+    sysVal.textContent = count;
+    if (sysSub) sysSub.textContent = `~${(count * 450).toLocaleString('es-PE')} beneficiarios protegidos`;
+  }
+
+  if (systems.length > 0) {
+    const totalLiters = systems.reduce((acc, s) => acc + (parseFloat(s.volume) || 0), 0);
+    if (totalLiters > 0 && volVal) {
+      volVal.textContent = (totalLiters / 1000).toFixed(1);
+      if (volSub) volSub.textContent = `${totalLiters.toLocaleString('es-PE')} L acumulados en reservorios`;
+    }
+  } else if (state.volume > 0 && volVal) {
+    volVal.textContent = (state.volume / 1000).toFixed(1);
+    if (volSub) volSub.textContent = `${state.volume.toLocaleString('es-PE', { maximumFractionDigits: 0 })} L en tanque activo (${((state.volume / (state.capacity || state.volume)) * 100).toFixed(0)}% capacidad)`;
+  }
+}
+
+// Live Dashboard Clock Ticker
+setInterval(() => {
+  const clockEl = $('#dashboard-live-clock');
+  if (clockEl && $('#inicio')?.classList.contains('active')) {
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const dateStr = now.toLocaleDateString('es-PE', { weekday: 'short', day: 'numeric', month: 'short' });
+    clockEl.innerHTML = `<span class="material-symbols-outlined" style="font-size: 15px; color: var(--secondary);">schedule</span> ${dateStr}, ${timeStr} • Telemetría activa`;
+  }
+}, 1000);
+
+function renderLast() {
+  renderDashboardIndicators();
 }
 renderLast();
 
@@ -551,18 +1625,33 @@ if (saveSysBtn) {
     const name = ($('#sys-name')?.value || '').trim();
     if (!name) return toast('Ingrese el nombre del sistema.');
     const a = get('cloragua-systems');
+    
+    const utmZone = $('#sys-utm-zone')?.value || '18S';
+    const utmEast = $('#sys-utm-east')?.value ? parseFloat($('#sys-utm-east').value) : null;
+    const utmNorth = $('#sys-utm-north')?.value ? parseFloat($('#sys-utm-north').value) : null;
+    const utmAlt = $('#sys-utm-alt')?.value ? parseFloat($('#sys-utm-alt').value) : null;
+
     a.unshift({
       name,
       town: $('#sys-town')?.value || '',
       district: $('#sys-district')?.value || '',
+      province: $('#sys-province')?.value || '',
+      department: $('#sys-department')?.value || '',
       tank: $('#sys-tank')?.value || '',
       volume: $('#sys-volume')?.value || '',
-      person: $('#sys-person')?.value || ''
+      person: $('#sys-person')?.value || '',
+      notes: $('#sys-notes')?.value || '',
+      utmZone,
+      utmEast,
+      utmNorth,
+      utmAlt,
+      date: new Date().toLocaleDateString('es-PE')
     });
     put('cloragua-systems', a);
-    toast('Sistema guardado correctamente.');
+    toast('Sistema y coordenadas UTM guardados.');
     renderSystems();
-    if (window.gotitaReact) window.gotitaReact(`¡Sistema "${name}" registrado con éxito en tu inventario! 📋🌟`);
+    renderDashboardIndicators();
+    if (window.gotitaReact) window.gotitaReact(`¡Sistema "${name}" registrado con coordenadas UTM con éxito! 📋📍🌟`);
   };
 }
 
@@ -571,18 +1660,38 @@ function renderSystems() {
   if (!list) return;
   const a = get('cloragua-systems');
   if (!a.length) {
-    list.innerHTML = '<div class="empty-state" style="padding: 24px; text-align: center; color: var(--on-surface-variant);">Aún no hay sistemas registrados.</div>';
+    list.innerHTML = '<div class="empty-state" style="padding: 24px; text-align: center; color: var(--on-surface-variant);">Aún no hay sistemas registrados. Ingrese uno arriba con sus coordenadas UTM.</div>';
     return;
   }
-  list.innerHTML = a.map((x, i) => `
-    <article class="record">
-      <div>
-        <h3>${x.name}</h3>
-        <p>${x.town || 'Sin centro poblado'} · ${x.district || 'Sin distrito'} · ${x.tank || 'Tanque no especificado'} · ${x.volume || '—'} L</p>
-      </div>
-      <button class="delete" data-i="${i}">Eliminar</button>
-    </article>
-  `).join('');
+  list.innerHTML = a.map((x, i) => {
+    let utmBadge = '';
+    let mapBtn = '';
+
+    if (x.utmEast && x.utmNorth) {
+      utmBadge = `<div class="utm-pill-badge"><span class="material-symbols-outlined">pin_drop</span> UTM ${x.utmZone || '18S'}: E ${Number(x.utmEast).toLocaleString('es-PE')} · N ${Number(x.utmNorth).toLocaleString('es-PE')}${x.utmAlt ? ` · ${x.utmAlt} msnm` : ''}</div>`;
+      try {
+        const { lat, lon } = utmToLatLon(x.utmEast, x.utmNorth, x.utmZone || '18S');
+        mapBtn = `<a href="https://www.google.com/maps/search/?api=1&query=${lat.toFixed(6)},${lon.toFixed(6)}" target="_blank" rel="noopener noreferrer" class="map-view-btn"><span class="material-symbols-outlined" style="font-size: 14px;">map</span> Ver Mapa</a>`;
+      } catch (err) {}
+    }
+
+    const locText = [x.town, x.district, x.province, x.department].filter(Boolean).join(' · ');
+
+    return `
+      <article class="record" style="flex-direction: column; align-items: stretch; gap: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
+          <div>
+            <h3 style="margin-bottom: 2px;">${x.name} ${mapBtn}</h3>
+            <p>${locText || 'Ubicación no especificada'} · ${x.tank || 'Tanque'} · <b>${x.volume ? Number(x.volume).toLocaleString('es-PE') + ' L' : '—'}</b></p>
+            ${x.person ? `<p style="font-size: 12px; color: var(--on-surface-variant); margin-top: 2px;">Responsable: ${x.person}</p>` : ''}
+            ${utmBadge}
+          </div>
+          <button class="delete" data-i="${i}" style="align-self: flex-start;">Eliminar</button>
+        </div>
+        ${x.notes ? `<div style="font-size: 12px; color: var(--on-surface-variant); background: var(--surface-container-high); padding: 8px 12px; border-radius: 8px;"><b>Notas:</b> ${x.notes}</div>` : ''}
+      </article>
+    `;
+  }).join('');
 
   $$('.delete').forEach(b => {
     b.onclick = () => {
@@ -590,26 +1699,27 @@ function renderSystems() {
       items.splice(+b.dataset.i, 1);
       put('cloragua-systems', items);
       renderSystems();
+      renderDashboardIndicators();
       toast('Sistema eliminado.');
     };
   });
 }
 renderSystems();
 
-// CSV Export
+// CSV Export with UTM support
 const exportBtn = $('#export-csv');
 if (exportBtn) {
   exportBtn.onclick = () => {
     const a = get('cloragua-measurements');
     if (!a.length) return toast('No hay mediciones para exportar.');
-    const csv = 'Fecha,Punto,Residual mg/L,Rango,Estado\n' + a.map(x => `"${x.date}","${x.point}",${x.value},"${x.min}-${x.max}","${x.status}"`).join('\n');
+    const csv = 'Fecha,Punto,Residual mg/L,Rango Min,Rango Max,Estado,Zona UTM,Este UTM,Norte UTM\n' + a.map(x => `"${x.date}","${x.point}",${x.value},${x.min},${x.max},"${x.status}","${x.utmZone || ''}","${x.utmEast || ''}","${x.utmNorth || ''}"`).join('\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'historial-cloragua.csv';
+    link.download = 'historial-cloragua-utm.csv';
     link.click();
     URL.revokeObjectURL(url);
-    if (window.gotitaReact) window.gotitaReact('¡Historial exportado en CSV para tus reportes sanitarios! 📊💾');
+    if (window.gotitaReact) window.gotitaReact('¡Historial con Coordenadas UTM exportado en CSV para fiscalización sanitaria! 📊🗺️💾');
   };
 }
 
@@ -2218,4 +3328,297 @@ $$('.help').forEach(btn => {
 
   requestAnimationFrame(renderLoop);
 })();
+
+// =========================================================================
+// MÓDULO DE APOYO TÉCNICO POR WHATSAPP (Teléfono: 920221581 / +51 920 221 581)
+// =========================================================================
+(() => {
+  const WHATSAPP_PHONE = '51920221581';
+
+  const WHATSAPP_TEMPLATES = {
+    all: {
+      title: 'Menú Completo de Opciones',
+      body: `Buenos días , necesito ayuda en lo siguiente :
+
+💧 *CLORAGUA - APOYO TÉCNICO & ASISTENCIA*
+Solicito ayuda en las siguientes opciones de la plataforma web:
+
+1️⃣ *Cálculo de Dosis de Cloro* (Hipoclorito de Sodio o Calcio)
+2️⃣ *Volumen y Capacidad del Tanque* (Cilíndrico / Rectangular)
+3️⃣ *Verificación de Cloro Residual Libre* (Comparador DPD en red)
+4️⃣ *Calibración de Dosificador por Goteo* (mL/min o probeta)
+5️⃣ *Preparación de Solución Madre y Dilución*
+6️⃣ *Georreferenciación y Coordenadas UTM WGS84* (Google Maps)
+7️⃣ *Registro y Padrón de Sistemas JASS*
+8️⃣ *Normativa Sanitaria D.S. N.° 031-2010-SA*
+9️⃣ *Otra consulta técnica u operativa*
+
+🌐 _Mensaje enviado desde la plataforma web ClorAgua_`
+    },
+    dosis: {
+      title: '1. Cálculo de Dosis de Cloro',
+      body: `Buenos días , necesito ayuda en lo siguiente :
+
+💧 *1. CÁLCULO DE DOSIS DE CLORO (CLORAGUA)*
+Solicito asistencia técnica para el cálculo de desinfección:
+• Tipo de producto: Hipoclorito de sodio / Calcio
+• Volumen de agua a tratar (L o m³): 
+• Cloro residual actual medido (mg/L): 
+• Cloro residual objetivo (0.50 - 1.00 mg/L): 
+
+🌐 _Enviado desde la plataforma web ClorAgua_`
+    },
+    volumen: {
+      title: '2. Volumen del Tanque',
+      body: `Buenos días , necesito ayuda en lo siguiente :
+
+🚰 *2. CÁLCULO DE VOLUMEN DE TANQUE / RESERVORIO*
+Solicito apoyo para calcular la capacidad y nivel de agua:
+• Geometría: Tanque cilíndrico / rectangular
+• Dimensiones principales: 
+
+🌐 _Enviado desde la plataforma web ClorAgua_`
+    },
+    verificar: {
+      title: '3. Verificación de Cloro Residual',
+      body: `Buenos días , necesito ayuda en lo siguiente :
+
+🧪 *3. CONTROL Y VIGILANCIA DE CLORO RESIDUAL (DPD)*
+Solicito orientación sobre mediciones de campo y cumplimiento normativo:
+• Punto de toma: Reservorio / Primera vivienda / Extremo de red
+• Valor medido con comparador DPD (mg/L): 
+
+🌐 _Enviado desde la plataforma web ClorAgua_`
+    },
+    calibrar: {
+      title: '4. Calibración de Dosificador',
+      body: `Buenos días , necesito ayuda en lo siguiente :
+
+⏱️ *4. CALIBRACIÓN DE DOSIFICADOR POR GOTEO*
+Solicito apoyo para calibrar el caudal de solución clorada:
+• Caudal de ingreso de agua al reservorio (L/s): 
+• Concentración de solución en tanque (%): 
+• Caudal de goteo calibrado (mL/min): 
+
+🌐 _Enviado desde la plataforma web ClorAgua_`
+    },
+    solucion: {
+      title: '5. Preparación de Solución Madre',
+      body: `Buenos días , necesito ayuda en lo siguiente :
+
+🥣 *5. PREPARACIÓN DE SOLUCIÓN MADRE*
+Solicito cálculo de dilución y cantidad de hipoclorito para el tanque de solución.
+
+🌐 _Enviado desde la plataforma web ClorAgua_`
+    },
+    utm: {
+      title: '6. Coordenadas UTM y GPS',
+      body: `Buenos días , necesito ayuda en lo siguiente :
+
+🗺️ *6. GEORREFERENCIACIÓN Y COORDENADAS UTM WGS84*
+Solicito asistencia para ubicar y transformar coordenadas de captaciones o reservorios desde Google Maps.
+
+🌐 _Enviado desde la plataforma web ClorAgua_`
+    },
+    sistemas: {
+      title: '7. Registro de Sistemas JASS',
+      body: `Buenos días , necesito ayuda en lo siguiente :
+
+📊 *7. REGISTRO Y GESTIÓN DE SISTEMAS JASS*
+Solicito apoyo con la administración de sistemas de agua rural y padrón de infraestructura.
+
+🌐 _Enviado desde la plataforma web ClorAgua_`
+    },
+    normativa: {
+      title: '8. Normativa D.S. 031-2010-SA',
+      body: `Buenos días , necesito ayuda en lo siguiente :
+
+📑 *8. NORMATIVA Y PARÁMETROS SANITARIOS (D.S. 031-2010-SA)*
+Solicito información sobre el marco normativo de calidad de agua para consumo humano.
+
+🌐 _Enviado desde la plataforma web ClorAgua_`
+    },
+    otro: {
+      title: '9. Otra Consulta / Soporte General',
+      body: `Buenos días , necesito ayuda en lo siguiente :
+
+💬 *9. CONSULTA GENERAL - APOYO TÉCNICO CLORAGUA*
+Estimado especialista técnico, tengo una consulta sobre el uso de la plataforma web:
+
+🌐 _Enviado desde la plataforma web ClorAgua_`
+    }
+  };
+
+  let selectedOption = 'all';
+
+  function buildMessage() {
+    const template = WHATSAPP_TEMPLATES[selectedOption] || WHATSAPP_TEMPLATES.all;
+    let baseText = template.body;
+    const noteInput = document.getElementById('whatsapp-custom-note');
+    const note = noteInput ? noteInput.value.trim() : '';
+
+    if (note) {
+      baseText += `\n\n📌 *Detalle específico de la consulta:*\n"${note}"`;
+    }
+    return baseText;
+  }
+
+  function updatePreview() {
+    const preview = document.getElementById('whatsapp-preview-text');
+    if (preview) {
+      preview.value = buildMessage();
+    }
+  }
+
+  function openWhatsAppModal() {
+    const modal = document.getElementById('whatsapp-support-modal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    updatePreview();
+    if (window.gotitaReact) {
+      window.gotitaReact('¡Apoyo Técnico disponible! Puedes escribirnos directamente por WhatsApp al 920 221 581 📱💧');
+    }
+  }
+
+  function closeWhatsAppModal() {
+    const modal = document.getElementById('whatsapp-support-modal');
+    if (modal) modal.classList.add('hidden');
+  }
+
+  function sendToWhatsApp() {
+    const message = buildMessage();
+    const encoded = encodeURIComponent(message);
+    const whatsappUrl = `https://api.whatsapp.com/send?phone=${WHATSAPP_PHONE}&text=${encoded}`;
+    
+    // Open WhatsApp in new tab
+    window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+    
+    toast('Abriendo WhatsApp con Apoyo Técnico (+51 920 221 581)...');
+    if (window.gotitaReact) {
+      window.gotitaReact('¡Mensaje enviado a WhatsApp! En breve nuestro equipo técnico te responderá 💧✨');
+    }
+    closeWhatsAppModal();
+  }
+
+  // Bind Buttons & Events
+  const supportCard = document.getElementById('sidebar-support-card');
+  if (supportCard) supportCard.onclick = openWhatsAppModal;
+
+  const sidebarWaBtn = document.getElementById('sidebar-whatsapp-btn');
+  if (sidebarWaBtn) {
+    sidebarWaBtn.onclick = (e) => {
+      e.stopPropagation();
+      openWhatsAppModal();
+    };
+  }
+
+  const headerCotizarBtn = document.getElementById('header-cotizar-btn');
+  if (headerCotizarBtn) headerCotizarBtn.onclick = openWhatsAppModal;
+
+  const heroWaBtn = document.getElementById('hero-whatsapp-btn');
+  if (heroWaBtn) heroWaBtn.onclick = openWhatsAppModal;
+
+  const serviceWaBtn = document.getElementById('service-card-soporte-wa');
+  if (serviceWaBtn) serviceWaBtn.onclick = openWhatsAppModal;
+
+  const normativaWaBtn = document.getElementById('normativa-whatsapp-btn');
+  if (normativaWaBtn) normativaWaBtn.onclick = openWhatsAppModal;
+
+  const volumeWaBtn = document.getElementById('volume-consult-wa-btn');
+  if (volumeWaBtn) volumeWaBtn.onclick = openWhatsAppModal;
+
+  // Header help button
+  const helpBtn = document.querySelector('header .help');
+  if (helpBtn) helpBtn.onclick = openWhatsAppModal;
+
+  // Live HUD Sine Wave Telemetry Animation
+  (function initHudWave() {
+    const hudCanvas = document.getElementById('hud-telemetry-canvas');
+    if (!hudCanvas) return;
+    const ctx = hudCanvas.getContext('2d');
+    if (!ctx) return;
+
+    let offset = 0;
+    function drawWave() {
+      const w = hudCanvas.width;
+      const h = hudCanvas.height;
+      ctx.clearRect(0, 0, w, h);
+
+      // Gradient stroke
+      const grad = ctx.createLinearGradient(0, 0, w, 0);
+      grad.addColorStop(0, 'rgba(0, 229, 255, 0.2)');
+      grad.addColorStop(0.5, 'rgba(0, 229, 255, 0.95)');
+      grad.addColorStop(1, 'rgba(0, 229, 255, 0.3)');
+
+      ctx.beginPath();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = grad;
+
+      const midY = h / 2;
+      for (let x = 0; x < w; x++) {
+        const y = midY + Math.sin((x * 0.05) + offset) * 10 + Math.cos((x * 0.02) - offset * 0.5) * 4;
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+
+      offset += 0.06;
+      requestAnimationFrame(drawWave);
+    }
+    drawWave();
+  })();
+
+  // Close buttons
+  const closeBtn = document.getElementById('close-whatsapp-modal-btn');
+  if (closeBtn) closeBtn.onclick = closeWhatsAppModal;
+
+  const closeBottomBtn = document.getElementById('close-whatsapp-modal-bottom-btn');
+  if (closeBottomBtn) closeBottomBtn.onclick = closeWhatsAppModal;
+
+  // Backdrop click to close
+  const modalBackdrop = document.getElementById('whatsapp-support-modal');
+  if (modalBackdrop) {
+    modalBackdrop.onclick = (e) => {
+      if (e.target === modalBackdrop) closeWhatsAppModal();
+    };
+  }
+
+  // Option buttons
+  const optionButtons = document.querySelectorAll('.wa-opt-btn');
+  optionButtons.forEach(btn => {
+    btn.onclick = () => {
+      optionButtons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedOption = btn.dataset.option || 'all';
+      updatePreview();
+    };
+  });
+
+  // Custom note input live sync
+  const noteInput = document.getElementById('whatsapp-custom-note');
+  if (noteInput) {
+    noteInput.addEventListener('input', updatePreview);
+  }
+
+  // Copy button
+  const copyBtn = document.getElementById('whatsapp-copy-btn');
+  if (copyBtn) {
+    copyBtn.onclick = async () => {
+      const text = buildMessage();
+      try {
+        await navigator.clipboard.writeText(text);
+        toast('¡Texto copiado al portapapeles!');
+      } catch (err) {
+        toast('No se pudo copiar automáticamente.');
+      }
+    };
+  }
+
+  // Send Direct Button
+  const sendBtn = document.getElementById('send-whatsapp-direct-btn');
+  if (sendBtn) {
+    sendBtn.onclick = sendToWhatsApp;
+  }
+})();
+
 

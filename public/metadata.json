@@ -1,7 +1,9 @@
 {
   "name": "CLORAGUA",
   "description": "Herramienta de cálculo, dosificación, medición y verificación de cloración y calidad del agua para consumo humano.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": [
+    "geolocation"
+  ],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]
